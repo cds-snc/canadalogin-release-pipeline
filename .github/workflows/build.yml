@@ -1,0 +1,176 @@
+name: Build release artifact
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: Path to the caller repository's release configuration.
+        required: true
+        type: string
+      name:
+        description: Build definition name.
+        required: true
+        type: string
+      environment:
+        description: GitHub environment supplying variables and secrets.
+        required: true
+        type: string
+      target-environment:
+        description: Environment whose desired artifact is being built.
+        required: true
+        type: string
+      source-sha:
+        description: Caller repository commit to build and publish.
+        required: true
+        type: string
+      notify-failure:
+        description: Send a Slack alert if this build fails.
+        required: false
+        default: true
+        type: boolean
+      kind:
+        description: Build implementation kind.
+        required: true
+        type: string
+      aws-role:
+        description: AWS IAM role name, or an empty string when AWS is not needed.
+        required: false
+        default: ""
+        type: string
+      aws-region:
+        description: AWS region used for artifact publication.
+        required: false
+        default: ca-central-1
+        type: string
+      dns-audit:
+        description: Enable the CDS DNS audit proxy.
+        required: false
+        default: false
+        type: boolean
+      node-version:
+        description: Node.js version, or an empty string when Node.js is not needed.
+        required: false
+        default: ""
+        type: string
+      sbom-enabled:
+        description: Generate and publish an image SBOM.
+        required: false
+        default: false
+        type: boolean
+      sbom-name:
+        description: Published SBOM name.
+        required: false
+        default: ""
+        type: string
+      sbom-dockerfile:
+        description: Dockerfile represented by the SBOM.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    name: ${{ inputs.name }} (${{ inputs.target-environment }})
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      deployment: false
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up release tooling
+        uses: $/actions/setup
+
+      - name: Set up Node.js
+        if: inputs.node-version != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Audit DNS requests
+        if: inputs.dns-audit
+        uses: cds-snc/dns-proxy-action@9ad793100229573be3f5ba78cc69ec523f2c8b7e # main
+        env:
+          DNS_PROXY_FORWARDTOSENTINEL: "true"
+          DNS_PROXY_LOGANALYTICSWORKSPACEID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}
+          DNS_PROXY_LOGANALYTICSSHAREDKEY: ${{ secrets.LOG_ANALYTICS_WORKSPACE_KEY }}
+
+      - name: Configure AWS credentials
+        if: inputs.aws-role != ''
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ inputs.aws-role }}
+          role-session-name: CanadaLoginReleaseBuild
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Log in to Amazon ECR
+        if: inputs.kind == 'docker'
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+
+      - name: Build and publish artifact
+        id: build
+        env:
+          BUILD_ENVIRONMENT: ${{ inputs.environment }}
+          BUILD_NAME: ${{ inputs.name }}
+          CONFIG_PATH: ${{ inputs.config-path }}
+          RELEASE_PIPELINE_VARS: ${{ toJSON(vars) }}
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_BACKEND_API_URL: ${{ secrets.VITE_BACKEND_API_URL }}
+          VITE_GOOGLE_ANALYTICS_ID: ${{ secrets.VITE_GOOGLE_ANALYTICS_ID }}
+          FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET: ${{ secrets.FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
+          BUILD_SECRET_1: ${{ secrets.BUILD_SECRET_1 }}
+          BUILD_SECRET_2: ${{ secrets.BUILD_SECRET_2 }}
+          BUILD_SECRET_3: ${{ secrets.BUILD_SECRET_3 }}
+          BUILD_SECRET_4: ${{ secrets.BUILD_SECRET_4 }}
+          BUILD_SECRET_5: ${{ secrets.BUILD_SECRET_5 }}
+          BUILD_SECRET_6: ${{ secrets.BUILD_SECRET_6 }}
+          BUILD_SECRET_7: ${{ secrets.BUILD_SECRET_7 }}
+          BUILD_SECRET_8: ${{ secrets.BUILD_SECRET_8 }}
+        run: >-
+          canadalogin-release build
+          --config "$CONFIG_PATH"
+          --name "$BUILD_NAME"
+          --environment "$BUILD_ENVIRONMENT"
+          --sha "$GITHUB_SHA"
+          --source-sha "${{ inputs.source-sha }}"
+          --github-ref "$GITHUB_REF"
+          --github-output
+
+      - name: Generate image SBOM
+        if: inputs.sbom-enabled
+        uses: cds-snc/security-tools/.github/actions/generate-sbom@d123fa2b895f7ef5b400fad333d2101b103b2e64 # v4.0.4
+        env:
+          TRIVY_DB_REPOSITORY: ${{ vars.TRIVY_DB_REPOSITORY }}
+        with:
+          docker_image: ${{ steps.build.outputs.image_uri }}
+          dockerfile_path: ${{ inputs.sbom-dockerfile }}
+          sbom_name: ${{ inputs.sbom-name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Slack about build failure
+        if: failure() && inputs.notify-failure
+        env:
+          BUILD_ENVIRONMENT: ${{ inputs.target-environment }}
+          BUILD_NAME: ${{ inputs.name }}
+          CONFIG_PATH: ${{ inputs.config-path }}
+          RELEASE_PIPELINE_VARS: ${{ toJSON(vars) }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK: ${{ secrets.GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK }}
+          GC_SIGNIN_WEBSITE_OPS_SLACK_ALERT_WEBHOOK: ${{ secrets.GC_SIGNIN_WEBSITE_OPS_SLACK_ALERT_WEBHOOK }}
+          CL_DEV_SLACK_ALERT_WEBHOOK: ${{ secrets.CL_DEV_SLACK_ALERT_WEBHOOK }}
+        run: >-
+          canadalogin-release notify
+          --status build-failure
+          --config "$CONFIG_PATH"
+          --environment "$BUILD_ENVIRONMENT"
+          --sha "$GITHUB_SHA"
+          --workflow-url "$WORKFLOW_URL"
+          --detail "$BUILD_NAME"

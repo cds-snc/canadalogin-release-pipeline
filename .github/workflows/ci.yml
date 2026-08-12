@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Set up release tooling
+        uses: $/actions/setup
+
+      - name: Compile Python package
+        run: python -m compileall -q src
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v

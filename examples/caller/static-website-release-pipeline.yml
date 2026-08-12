@@ -1,0 +1,44 @@
+name: Release pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment name, or "all"
+        required: true
+        default: dev
+        type: string
+      force-redeploy:
+        description: Force a same-version deployment
+        required: false
+        default: false
+        type: boolean
+      rebuild:
+        description: Rebuild website artifacts before deployment
+        required: false
+        default: false
+        type: boolean
+  repository_dispatch:
+    types: [gc-articles-update]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    concurrency:
+      group: canadalogin-release-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
+      queue: max
+    uses: cds-snc/canadalogin-release-system/.github/workflows/release.yml@v1.0.0
+    with:
+      environment: ${{ inputs.environment || '' }}
+      force-redeploy: ${{ inputs.force-redeploy || false }}
+      rebuild: ${{ inputs.rebuild || false }}
+    secrets: inherit
