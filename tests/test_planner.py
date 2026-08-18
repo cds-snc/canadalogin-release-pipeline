@@ -129,6 +129,24 @@ class PlannerTest(unittest.TestCase):
         self.assertFalse(plan.deployments)
         self.assertFalse(plan.release_please)
 
+    def test_empty_work_matrices_have_disabled_sentinels(self) -> None:
+        config = self.config("gc-sign-in-migration")
+        plan = create_plan(
+            config,
+            event_name="pull_request",
+            sha="abc123",
+            changed_paths=[],
+        )
+
+        for output_name in (
+            "required_build_matrix",
+            "auxiliary_build_matrix",
+            "deployment_matrix",
+        ):
+            with self.subTest(output_name=output_name):
+                entry = json.loads(plan.github_outputs()[output_name])["include"][0]
+                self.assertFalse(entry["enabled"])
+
     def test_repository_dispatch_rebuilds_and_deploys_only_configured_environment(
         self,
     ) -> None:
