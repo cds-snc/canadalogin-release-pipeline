@@ -156,7 +156,6 @@ jobs:
       ${{
         always() &&
         needs.plan.result == 'success' &&
-        needs.plan.outputs.has_required_builds == 'true' &&
         (needs.release_please.result == 'success' || needs.release_please.result == 'skipped')
       }}
     strategy:
@@ -165,6 +164,7 @@ jobs:
     uses: $/.github/workflows/build.yml
     with:
       config-path: ${{ inputs.config-path }}
+      enabled: ${{ matrix.enabled }}
       name: ${{ matrix.name }}
       environment: ${{ matrix.environment }}
       target-environment: ${{ matrix.target_environment }}
@@ -187,7 +187,6 @@ jobs:
       ${{
         always() &&
         needs.plan.result == 'success' &&
-        needs.plan.outputs.has_auxiliary_builds == 'true' &&
         (needs.release_please.result == 'success' || needs.release_please.result == 'skipped')
       }}
     strategy:
@@ -196,6 +195,7 @@ jobs:
     uses: $/.github/workflows/build.yml
     with:
       config-path: ${{ inputs.config-path }}
+      enabled: ${{ matrix.enabled }}
       name: ${{ matrix.name }}
       environment: ${{ matrix.environment }}
       target-environment: ${{ matrix.target_environment }}
@@ -218,7 +218,6 @@ jobs:
       ${{
         always() &&
         needs.plan.result == 'success' &&
-        needs.plan.outputs.has_deployments == 'true' &&
         (needs.release_please.result == 'success' || needs.release_please.result == 'skipped') &&
         (needs.required_builds.result == 'success' || needs.required_builds.result == 'skipped')
       }}
@@ -229,6 +228,7 @@ jobs:
     uses: $/.github/workflows/deploy-environment.yml
     with:
       config-path: ${{ inputs.config-path }}
+      enabled: ${{ matrix.enabled }}
       environment: ${{ matrix.environment }}
       sha: ${{ matrix.sha }}
       aws-region: ${{ matrix.aws_region }}

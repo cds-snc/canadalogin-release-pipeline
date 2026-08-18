@@ -48,9 +48,15 @@ class Plan:
                 separators=(",", ":"),
             ),
             "promotions": json.dumps(promotion_values, separators=(",", ":")),
-            "required_build_matrix": _matrix(self.required_builds),
-            "auxiliary_build_matrix": _matrix(self.auxiliary_builds),
-            "deployment_matrix": _matrix(self.deployments),
+            "required_build_matrix": _matrix(
+                self.required_builds, _empty_build_matrix_entry()
+            ),
+            "auxiliary_build_matrix": _matrix(
+                self.auxiliary_builds, _empty_build_matrix_entry()
+            ),
+            "deployment_matrix": _matrix(
+                self.deployments, _empty_deployment_matrix_entry()
+            ),
         }
 
 
@@ -154,6 +160,7 @@ def create_plan(
             {
                 "environment": environment,
                 "sha": desired_shas[environment],
+                "enabled": True,
                 "aws_region": config.aws_region,
                 "s3_role": roles.get("s3", ""),
                 "ecs_role": roles.get("ecs", ""),
@@ -246,6 +253,7 @@ def _build_matrix_entry(
     workflow_sha: str,
 ) -> dict[str, object]:
     return {
+        "enabled": True,
         "name": build.name,
         "environment": environment,
         "target_environment": target_environment,
@@ -331,8 +339,40 @@ def _promotions(
     return tuple(promotions)
 
 
-def _matrix(values: Sequence[dict[str, object]]) -> str:
-    return json.dumps({"include": list(values)}, separators=(",", ":"))
+def _matrix(values: Sequence[dict[str, object]], empty_entry: dict[str, object]) -> str:
+    return json.dumps({"include": list(values) or [empty_entry]}, separators=(",", ":"))
+
+
+def _empty_build_matrix_entry() -> dict[str, object]:
+    return {
+        "enabled": False,
+        "name": "",
+        "environment": "",
+        "target_environment": "",
+        "sha": "",
+        "notify_failure": False,
+        "kind": "",
+        "aws_region": "ca-central-1",
+        "aws_role": "",
+        "dns_audit": False,
+        "node_version": "",
+        "sbom_enabled": False,
+        "sbom_name": "",
+        "sbom_dockerfile": "",
+    }
+
+
+def _empty_deployment_matrix_entry() -> dict[str, object]:
+    return {
+        "enabled": False,
+        "environment": "",
+        "sha": "",
+        "aws_region": "ca-central-1",
+        "s3_role": "",
+        "ecs_role": "",
+        "notify": False,
+        "notify_failure": False,
+    }
 
 
 def _boolean(value: bool) -> str:
