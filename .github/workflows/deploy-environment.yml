@@ -52,7 +52,7 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy ${{ inputs.environment }}
+    name: Deploy
     runs-on: ubuntu-latest
     concurrency:
       group: canadalogin-release-${{ github.repository }}-${{ inputs.environment }}

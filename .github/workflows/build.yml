@@ -74,7 +74,7 @@ permissions:
 
 jobs:
   build:
-    name: ${{ inputs.name }} (${{ inputs.target-environment }})
+    name: Build artifact
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.environment }}
