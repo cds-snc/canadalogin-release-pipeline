@@ -6,6 +6,7 @@ import unittest
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.deploy import deploy_ecs, deploy_s3
@@ -63,6 +64,24 @@ class DeployTest(unittest.TestCase):
             github_ref="refs/heads/main",
             variables=variables,
             secrets=secrets,
+        )
+
+    @staticmethod
+    def stable_service() -> str:
+        return json.dumps(
+            {
+                "services": [
+                    {
+                        "runningCount": 1,
+                        "desiredCount": 1,
+                        "pendingCount": 0,
+                        "deployments": [
+                            {"status": "PRIMARY", "rolloutState": "COMPLETED"}
+                        ],
+                    }
+                ],
+                "failures": [],
+            }
         )
 
     def test_s3_preflight_happens_before_sync_and_invalidation(self) -> None:
@@ -211,7 +230,9 @@ class DeployTest(unittest.TestCase):
                 }
             }
         )
-        runner = AwsRunner([(0, image), (0, service), (0, task)])
+        runner = AwsRunner(
+            [(0, image), (0, service), (0, task), (0, self.stable_service())]
+        )
         context = self.context(
             Path("."),
             {
@@ -224,7 +245,7 @@ class DeployTest(unittest.TestCase):
         result = deploy_ecs(config, context, runner=runner)
 
         self.assertEqual(len(runner.commands), 5)
-        self.assertIn("services-stable", runner.commands[3])
+        self.assertEqual(runner.commands[3][0:3], ("aws", "ecs", "describe-services"))
         self.assertEqual(runner.commands[4][0:3], ("aws", "ssm", "put-parameter"))
         self.assertEqual(result.unchanged_resources, ("ecs:cluster/service",))
 
@@ -313,8 +334,7 @@ class DeployTest(unittest.TestCase):
                 (0, task),
                 (0, registered),
                 (0, "{}"),
-                (0, "{}"),
-                (0, "{}"),
+                (0, self.stable_service()),
             ]
         )
         context = self.context(
@@ -336,9 +356,145 @@ class DeployTest(unittest.TestCase):
         self.assertIn("task:2", runner.commands[4])
         self.assertIn("--propagate-tags", runner.commands[4])
         self.assertIn("SERVICE", runner.commands[4])
-        self.assertIn("services-stable", runner.commands[5])
+        self.assertEqual(runner.commands[5][0:3], ("aws", "ecs", "describe-services"))
         self.assertEqual(runner.commands[6][0:3], ("aws", "ssm", "put-parameter"))
         self.assertEqual(result.changed_resources, ("ecs:cluster/service",))
+
+    def test_ecs_wait_failure_includes_rollout_diagnostics(self) -> None:
+        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
+        service = json.dumps(
+            {"services": [{"taskDefinition": "task:1"}], "failures": []}
+        )
+        task = json.dumps(
+            {
+                "taskDefinition": {
+                    "family": "example",
+                    "containerDefinitions": [
+                        {"name": "service", "image": "example.ecr/app:old"}
+                    ],
+                }
+            }
+        )
+        registered = json.dumps({"taskDefinition": {"taskDefinitionArn": "task:2"}})
+        diagnostics = json.dumps(
+            {
+                "services": [
+                    {
+                        "runningCount": 1,
+                        "desiredCount": 1,
+                        "pendingCount": 0,
+                        "deployments": [
+                            {
+                                "status": "PRIMARY",
+                                "rolloutState": "FAILED",
+                                "rolloutStateReason": "deployment circuit breaker",
+                                "failedTasks": 3,
+                            }
+                        ],
+                        "events": [{"message": "deployment failed"}],
+                    }
+                ],
+                "failures": [],
+            }
+        )
+        runner = AwsRunner(
+            [
+                (0, image),
+                (0, service),
+                (0, task),
+                (0, registered),
+                (0, "{}"),
+                (0, diagnostics),
+            ]
+        )
+        context = self.context(
+            Path("."),
+            {
+                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
+                "ECS_CLUSTER": "cluster",
+                "ECS_SERVICE": "service",
+            },
+        )
+
+        with self.assertRaisesRegex(
+            ConfigError,
+            "rollout_state.*FAILED.*deployment circuit breaker.*deployment failed",
+        ):
+            deploy_ecs(config, context, runner=runner)
+
+        self.assertFalse(
+            any(command[1:3] == ("ssm", "put-parameter") for command in runner.commands)
+        )
+
+    def test_ecs_wait_timeout_is_bounded_and_includes_last_diagnostics(self) -> None:
+        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
+        service = json.dumps(
+            {"services": [{"taskDefinition": "task:1"}], "failures": []}
+        )
+        task = json.dumps(
+            {
+                "taskDefinition": {
+                    "family": "example",
+                    "containerDefinitions": [
+                        {"name": "service", "image": "example.ecr/app:old"}
+                    ],
+                }
+            }
+        )
+        registered = json.dumps({"taskDefinition": {"taskDefinitionArn": "task:2"}})
+        pending = json.dumps(
+            {
+                "services": [
+                    {
+                        "runningCount": 0,
+                        "desiredCount": 1,
+                        "pendingCount": 1,
+                        "deployments": [
+                            {
+                                "status": "PRIMARY",
+                                "rolloutState": "IN_PROGRESS",
+                                "rolloutStateReason": "waiting for task",
+                                "failedTasks": 0,
+                            }
+                        ],
+                    }
+                ],
+                "failures": [],
+            }
+        )
+        runner = AwsRunner(
+            [
+                (0, image),
+                (0, service),
+                (0, task),
+                (0, registered),
+                (0, "{}"),
+                (0, pending),
+            ]
+        )
+        context = self.context(
+            Path("."),
+            {
+                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
+                "ECS_CLUSTER": "cluster",
+                "ECS_SERVICE": "service",
+            },
+        )
+
+        with (
+            patch("canadalogin_release.deploy.time.monotonic", side_effect=(0, 601)),
+            self.assertRaisesRegex(
+                ConfigError,
+                "within 600 seconds.*rollout_state.*IN_PROGRESS.*waiting for task",
+            ),
+        ):
+            deploy_ecs(config, context, runner=runner)
+
+        self.assertFalse(
+            any(command[1:3] == ("ssm", "put-parameter") for command in runner.commands)
+        )
 
     def test_force_redeploy_uses_current_task_definition(self) -> None:
         config = self.config("gc-signin-migration-oidc-rp-simulator")
@@ -357,7 +513,7 @@ class DeployTest(unittest.TestCase):
             }
         )
         runner = AwsRunner(
-            [(0, image), (0, service), (0, task), (0, "{}"), (0, "{}"), (0, "{}")]
+            [(0, image), (0, service), (0, task), (0, "{}"), (0, self.stable_service())]
         )
         context = self.context(
             Path("."),

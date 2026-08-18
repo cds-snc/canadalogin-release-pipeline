@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import tempfile
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,6 +38,8 @@ REGISTER_TASK_DEFINITION_FIELDS = {
     "taskRoleArn",
     "volumes",
 }
+ECS_ROLLOUT_TIMEOUT_SECONDS = 600
+ECS_ROLLOUT_POLL_INTERVAL_SECONDS = 15
 
 
 @dataclass(frozen=True)
@@ -200,18 +203,120 @@ def deploy_ecs(
 
 
 def _wait_for_service_stability(state: _EcsState, runner: CommandRunner) -> None:
-    _run_aws(
-        runner,
-        [
-            "aws",
-            "ecs",
-            "wait",
-            "services-stable",
-            "--cluster",
-            state.cluster,
-            "--services",
-            state.service,
-        ],
+    deadline = time.monotonic() + ECS_ROLLOUT_TIMEOUT_SECONDS
+    command = [
+        "aws",
+        "ecs",
+        "describe-services",
+        "--cluster",
+        state.cluster,
+        "--services",
+        state.service,
+        "--output",
+        "json",
+    ]
+    diagnostics = "no ECS service response"
+    while True:
+        result = _run_aws(runner, command, check=False, log_output=False)
+        if result.returncode != 0:
+            error = (result.stderr or result.stdout).strip()
+            diagnostics = f"describe-services error={error or 'request failed'}"
+        else:
+            try:
+                document = json.loads(result.stdout)
+            except json.JSONDecodeError:
+                document = None
+                diagnostics = "describe-services returned invalid JSON"
+            if isinstance(document, Mapping):
+                diagnostics = _ecs_service_diagnostics(document)
+                if _ecs_rollout_failed(document):
+                    raise ConfigError(
+                        f"ECS service {state.cluster}/{state.service} reported a "
+                        f"failed rollout: {diagnostics}"
+                    )
+                if _ecs_service_is_stable(document):
+                    return
+            elif document is not None:
+                diagnostics = "describe-services returned a non-object"
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ConfigError(
+                f"ECS service {state.cluster}/{state.service} did not become stable "
+                f"within {ECS_ROLLOUT_TIMEOUT_SECONDS} seconds: {diagnostics}"
+            )
+        time.sleep(min(ECS_ROLLOUT_POLL_INTERVAL_SECONDS, remaining))
+
+
+def _ecs_service_is_stable(document: Mapping[str, Any]) -> bool:
+    services = document.get("services", [])
+    if not isinstance(services, list) or len(services) != 1:
+        return False
+    service = services[0]
+    if not isinstance(service, Mapping):
+        return False
+    deployments = service.get("deployments", [])
+    if not isinstance(deployments, list) or len(deployments) != 1:
+        return False
+    deployment = deployments[0]
+    if not isinstance(deployment, Mapping):
+        return False
+    return (
+        service.get("runningCount") == service.get("desiredCount")
+        and service.get("pendingCount", 0) == 0
+        and deployment.get("rolloutState", "COMPLETED") == "COMPLETED"
+    )
+
+
+def _ecs_rollout_failed(document: Mapping[str, Any]) -> bool:
+    services = document.get("services", [])
+    if not isinstance(services, list) or len(services) != 1:
+        return bool(document.get("failures"))
+    service = services[0]
+    if not isinstance(service, Mapping):
+        return False
+    deployments = service.get("deployments", [])
+    if not isinstance(deployments, list):
+        return False
+    return any(
+        isinstance(deployment, Mapping) and deployment.get("rolloutState") == "FAILED"
+        for deployment in deployments
+    )
+
+
+def _ecs_service_diagnostics(document: Mapping[str, Any]) -> str:
+    services = document.get("services", [])
+    if not isinstance(services, list) or len(services) != 1:
+        return f"diagnostics_unavailable=unexpected services response: {services!r}"
+    service = services[0]
+    if not isinstance(service, Mapping):
+        return "diagnostics_unavailable=service response was not an object"
+
+    deployments = service.get("deployments", [])
+    rollout_states = []
+    if isinstance(deployments, list):
+        for deployment in deployments:
+            if not isinstance(deployment, Mapping):
+                continue
+            rollout_states.append(
+                {
+                    "status": deployment.get("status"),
+                    "rollout_state": deployment.get("rolloutState"),
+                    "reason": deployment.get("rolloutStateReason"),
+                    "failed_tasks": deployment.get("failedTasks"),
+                }
+            )
+    events = service.get("events", [])
+    recent_events = []
+    if isinstance(events, list):
+        for event in events[:5]:
+            if isinstance(event, Mapping) and event.get("message"):
+                recent_events.append(event["message"])
+    return (
+        f"rollout_states={rollout_states!r}; "
+        f"counts={{running:{service.get('runningCount')}, "
+        f"desired:{service.get('desiredCount')}, pending:{service.get('pendingCount')}}}; "
+        f"recent_events={recent_events!r}"
     )
 
 
