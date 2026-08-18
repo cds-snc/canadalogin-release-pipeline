@@ -150,7 +150,7 @@ jobs:
           --workflow-url "$WORKFLOW_URL"
 
   required_builds:
-    name: Build ${{ matrix.name }} (${{ matrix.target_environment }})
+    name: ${{ matrix.name && format('Build {0} ({1})', matrix.name, matrix.target_environment) || 'Build artifacts' }}
     needs: [plan, release_please]
     if: >-
       ${{
@@ -181,7 +181,7 @@ jobs:
     secrets: inherit
 
   auxiliary_builds:
-    name: Auxiliary build ${{ matrix.name }} (${{ matrix.target_environment }})
+    name: ${{ matrix.name && format('Auxiliary build {0} ({1})', matrix.name, matrix.target_environment) || 'Auxiliary builds' }}
     needs: [plan, release_please]
     if: >-
       ${{
@@ -212,7 +212,7 @@ jobs:
     secrets: inherit
 
   deploy:
-    name: Deploy ${{ matrix.environment }}
+    name: ${{ matrix.environment && format('Deploy {0}', matrix.environment) || 'Deploy environments' }}
     needs: [plan, release_please, required_builds]
     if: >-
       ${{
