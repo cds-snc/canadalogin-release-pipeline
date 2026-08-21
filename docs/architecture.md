@@ -100,6 +100,7 @@ sequenceDiagram
 - Build matrices use `fail-fast: false` so all failures are visible before deployment is considered.
 - S3 artifacts, desired ECR images, and ECS services/task definitions are checked before the first built-in deployment mutation.
 - Every version tag is resolved during planning. A push may resolve the current release manifest to the current SHA while release-please creates that tag later in the same run; manual runs remain strict.
+- The reusable release workflow serializes plan, release-please, build, and deployment work per caller repository; caller workflows retain the same lock as a defense against independent caller jobs.
 - SSM is written only after ECS reaches stable state.
 - Failure hooks and Slack alerts run in the environment job and therefore name the affected environment.
 
@@ -113,7 +114,7 @@ These controls reduce partial state but do not make the current S3 sync and ECS 
 - Pull requests use `pull_request`, not privileged `pull_request_target`.
 - Configured commands are argv arrays and run with `shell=False`.
 - Secrets are passed individually. They are never serialized into JSON, matching GitHub's warning that structured secret blobs can defeat exact-value redaction.
-- Mapped build and deployment secrets are removed from Git and AWS child-process environments after their configured values are resolved. Hook steps receive only `HOOK_SECRET_1` through `HOOK_SECRET_4`.
+- Mapped build and deployment secrets are removed from Git and AWS child-process environments after their configured values are resolved. Caller-defined build and hook commands do not inherit AWS or GitHub credentials. Hook steps receive only `HOOK_SECRET_1` through `HOOK_SECRET_4` in addition to configured variables.
 - AWS access uses OIDC and environment-specific role names.
-- Jobs receive only the token permissions needed for their role. Artifact build jobs use `contents: write` because the pinned SBOM action submits GitHub dependency snapshots.
+- Jobs receive only the token permissions needed for their role. Ordinary artifact builds use `contents: read`; the isolated SBOM job uses `contents: write` because the pinned SBOM action submits GitHub dependency snapshots.
 - Caller rulesets remain responsible for enforcing review requirements before deployment manifests reach main.

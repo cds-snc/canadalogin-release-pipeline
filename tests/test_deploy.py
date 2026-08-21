@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig
-from canadalogin_release.deploy import deploy_ecs, deploy_s3
+from canadalogin_release.deploy import _ecs_service_is_stable, deploy_ecs, deploy_s3
 from canadalogin_release.runtime import RuntimeContext
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
@@ -67,7 +67,9 @@ class DeployTest(unittest.TestCase):
         )
 
     @staticmethod
-    def stable_service() -> str:
+    def stable_service(
+        task_definition: str = "task:1", deployment_id: str = "deployment-1"
+    ) -> str:
         return json.dumps(
             {
                 "services": [
@@ -76,7 +78,12 @@ class DeployTest(unittest.TestCase):
                         "desiredCount": 1,
                         "pendingCount": 0,
                         "deployments": [
-                            {"status": "PRIMARY", "rolloutState": "COMPLETED"}
+                            {
+                                "id": deployment_id,
+                                "status": "PRIMARY",
+                                "taskDefinition": task_definition,
+                                "rolloutState": "COMPLETED",
+                            }
                         ],
                     }
                 ],
@@ -249,6 +256,47 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(runner.commands[4][0:3], ("aws", "ssm", "put-parameter"))
         self.assertEqual(result.unchanged_resources, ("ecs:cluster/service",))
 
+    def test_ecs_digest_image_is_a_no_op(self) -> None:
+        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        repository = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
+        image = json.dumps(
+            {"imageDetails": [{"imageTags": ["abc123"], "imageDigest": "sha256:abc"}]}
+        )
+        service = json.dumps(
+            {"services": [{"taskDefinition": "task:1"}], "failures": []}
+        )
+        task = json.dumps(
+            {
+                "taskDefinition": {
+                    "family": "example",
+                    "containerDefinitions": [
+                        {
+                            "name": "service",
+                            "image": f"{repository}@sha256:abc",
+                        }
+                    ],
+                }
+            }
+        )
+        runner = AwsRunner(
+            [(0, image), (0, service), (0, task), (0, self.stable_service())]
+        )
+        context = self.context(
+            Path("."),
+            {
+                "ARTIFACT_ECR_REPOSITORY": repository,
+                "ECS_CLUSTER": "cluster",
+                "ECS_SERVICE": "service",
+            },
+        )
+
+        result = deploy_ecs(config, context, runner=runner)
+
+        self.assertEqual(result.unchanged_resources, ("ecs:cluster/service",))
+        self.assertNotIn(
+            "update-service", " ".join(" ".join(command) for command in runner.commands)
+        )
+
     def test_missing_ecr_image_aborts_before_service_mutation(self) -> None:
         config = self.config("gc-signin-migration-oidc-rp-simulator")
         runner = AwsRunner([(0, json.dumps({"imageDetails": []}))])
@@ -307,7 +355,10 @@ class DeployTest(unittest.TestCase):
 
     def test_ecs_changed_image_registers_waits_and_updates_ssm(self) -> None:
         config = self.config("gc-signin-migration-oidc-rp-simulator")
-        image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
+        repository = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
+        image = json.dumps(
+            {"imageDetails": [{"imageTags": ["abc123"], "imageDigest": "sha256:abc"}]}
+        )
         service = json.dumps(
             {"services": [{"taskDefinition": "task:1"}], "failures": []}
         )
@@ -320,7 +371,7 @@ class DeployTest(unittest.TestCase):
                     "family": "example",
                     "networkMode": "awsvpc",
                     "containerDefinitions": [
-                        {"name": "service", "image": "example.ecr/app:old"},
+                        {"name": "service", "image": f"{repository}:old"},
                         {"name": "sidecar", "image": "example.ecr/sidecar:fixed"},
                     ],
                 }
@@ -334,13 +385,28 @@ class DeployTest(unittest.TestCase):
                 (0, task),
                 (0, registered),
                 (0, "{}"),
-                (0, self.stable_service()),
+                (0, self.stable_service("task:2", "deployment-2")),
+                (
+                    0,
+                    json.dumps(
+                        {
+                            "taskDefinition": {
+                                "containerDefinitions": [
+                                    {
+                                        "name": "service",
+                                        "image": f"{repository}@sha256:abc",
+                                    }
+                                ]
+                            }
+                        }
+                    ),
+                ),
             ]
         )
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
+                "ARTIFACT_ECR_REPOSITORY": repository,
                 "ECS_CLUSTER": "cluster",
                 "ECS_SERVICE": "service",
             },
@@ -350,21 +416,32 @@ class DeployTest(unittest.TestCase):
 
         self.assertNotIn("revision", runner.registration)
         containers = runner.registration["containerDefinitions"]
-        self.assertEqual(containers[0]["image"], "example.ecr/app:abc123")
+        self.assertEqual(containers[0]["image"], f"{repository}@sha256:abc")
         self.assertEqual(containers[1]["image"], "example.ecr/sidecar:fixed")
         self.assertNotIn("tags", runner.registration)
         self.assertIn("task:2", runner.commands[4])
         self.assertIn("--propagate-tags", runner.commands[4])
         self.assertIn("SERVICE", runner.commands[4])
         self.assertEqual(runner.commands[5][0:3], ("aws", "ecs", "describe-services"))
-        self.assertEqual(runner.commands[6][0:3], ("aws", "ssm", "put-parameter"))
+        self.assertEqual(
+            runner.commands[6][0:3], ("aws", "ecs", "describe-task-definition")
+        )
+        self.assertEqual(runner.commands[7][0:3], ("aws", "ssm", "put-parameter"))
         self.assertEqual(result.changed_resources, ("ecs:cluster/service",))
 
     def test_ecs_wait_failure_includes_rollout_diagnostics(self) -> None:
         config = self.config("gc-signin-migration-oidc-rp-simulator")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
         service = json.dumps(
-            {"services": [{"taskDefinition": "task:1"}], "failures": []}
+            {
+                "services": [
+                    {
+                        "taskDefinition": "task:1",
+                        "deployments": [{"id": "deployment-1", "status": "PRIMARY"}],
+                    }
+                ],
+                "failures": [],
+            }
         )
         task = json.dumps(
             {
@@ -427,11 +504,46 @@ class DeployTest(unittest.TestCase):
             any(command[1:3] == ("ssm", "put-parameter") for command in runner.commands)
         )
 
+    def test_ecs_stability_rejects_stale_or_competing_deployment(self) -> None:
+        stale = json.loads(self.stable_service("task:old", "deployment-old"))
+        self.assertFalse(
+            _ecs_service_is_stable(
+                stale,
+                expected_task_definition_arn="task:new",
+            )
+        )
+        self.assertFalse(
+            _ecs_service_is_stable(
+                json.loads(self.stable_service("task:new", "deployment-old")),
+                expected_task_definition_arn="task:new",
+                previous_deployment_id="deployment-old",
+            )
+        )
+
+    def test_ecs_stability_rejects_malformed_deployment_identity(self) -> None:
+        malformed = json.loads(self.stable_service())
+        del malformed["services"][0]["deployments"][0]["taskDefinition"]
+
+        self.assertFalse(
+            _ecs_service_is_stable(
+                malformed,
+                expected_task_definition_arn="task:1",
+            )
+        )
+
     def test_ecs_wait_timeout_is_bounded_and_includes_last_diagnostics(self) -> None:
         config = self.config("gc-signin-migration-oidc-rp-simulator")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
         service = json.dumps(
-            {"services": [{"taskDefinition": "task:1"}], "failures": []}
+            {
+                "services": [
+                    {
+                        "taskDefinition": "task:1",
+                        "deployments": [{"id": "deployment-1", "status": "PRIMARY"}],
+                    }
+                ],
+                "failures": [],
+            }
         )
         task = json.dumps(
             {
@@ -500,7 +612,15 @@ class DeployTest(unittest.TestCase):
         config = self.config("gc-signin-migration-oidc-rp-simulator")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
         service = json.dumps(
-            {"services": [{"taskDefinition": "task:1"}], "failures": []}
+            {
+                "services": [
+                    {
+                        "taskDefinition": "task:1",
+                        "deployments": [{"id": "deployment-1", "status": "PRIMARY"}],
+                    }
+                ],
+                "failures": [],
+            }
         )
         task = json.dumps(
             {
@@ -513,7 +633,13 @@ class DeployTest(unittest.TestCase):
             }
         )
         runner = AwsRunner(
-            [(0, image), (0, service), (0, task), (0, "{}"), (0, self.stable_service())]
+            [
+                (0, image),
+                (0, service),
+                (0, task),
+                (0, "{}"),
+                (0, self.stable_service("task:1", "deployment-2")),
+            ]
         )
         context = self.context(
             Path("."),

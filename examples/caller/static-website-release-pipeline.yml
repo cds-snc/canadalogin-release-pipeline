@@ -36,7 +36,7 @@ jobs:
     concurrency:
       group: canadalogin-release-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
       queue: max
-    uses: cds-snc/canadalogin-release-system/.github/workflows/release.yml@v1.0.0
+    uses: cds-snc/canadalogin-release-system/.github/workflows/release.yml@v1.0.5
     with:
       environment: ${{ inputs.environment || '' }}
       force-redeploy: ${{ inputs.force-redeploy || false }}

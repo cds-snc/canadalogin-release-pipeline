@@ -13,6 +13,7 @@ Release orchestration stays here. Application-specific commands and infrastructu
 - `.deployed_versions/<environment>.json` promotion semantics
 - environment-specific command builds and Docker builds
 - immutable SHA images, optional `latest` and semver image tags
+- verified ECR image digests and immutable S3 build prefixes
 - S3 build artifacts, S3 deployments, and CloudFront invalidations
 - one or many ECS services, stability waits, SSM image parameters, and force redeploy
 - DNS audit and SBOM integrations
@@ -33,11 +34,11 @@ The caller examples pin a reviewed semver release:
 ```yaml
 jobs:
   release:
-    uses: cds-snc/canadalogin-release-system/.github/workflows/release.yml@v1.0.0
+    uses: cds-snc/canadalogin-release-system/.github/workflows/release.yml@v1.0.5
     secrets: inherit
 ```
 
-Git tags can technically be moved. Protect release tags and never retarget them; callers requiring GitHub's strongest immutable pin should replace `v1.0.0` with that release's full 40-character commit SHA.
+Git tags can technically be moved. Protect release tags and never retarget them; callers requiring GitHub's strongest immutable pin should replace `v1.0.5` with that release's full 40-character commit SHA.
 
 Keep the existing release-please files and `.deployed_versions` directory. The shared workflow reads them from the caller repository.
 

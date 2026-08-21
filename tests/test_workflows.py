@@ -40,11 +40,29 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: [plan, release_please, required_builds]", workflow)
         self.assertIn("needs.required_builds.result == 'success'", workflow)
         self.assertIn("max-parallel: 1", workflow)
+        self.assertIn("concurrency:\n  group: canadalogin-release-", workflow)
 
-    def test_sbom_build_workflow_has_snapshot_write_permission(self) -> None:
+    def test_workflow_checkouts_do_not_persist_credentials(self) -> None:
+        for path in self.workflow_files():
+            if path.suffix != ".yml":
+                continue
+            workflow = path.read_text()
+            checkout_count = workflow.count("actions/checkout@")
+            if checkout_count:
+                with self.subTest(path=path.name):
+                    self.assertEqual(
+                        workflow.count("persist-credentials: false"), checkout_count
+                    )
+
+    def test_only_sbom_build_workflow_has_snapshot_write_permission(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
 
-        self.assertIn("permissions:\n  contents: write", workflow)
+        self.assertIn("contents: read\n      id-token: write", workflow)
+        self.assertIn("sbom:\n", workflow)
+        self.assertIn("sbom:\n    if: inputs.sbom-enabled", workflow)
+        self.assertIn(
+            "permissions:\n      contents: write\n      id-token: write", workflow
+        )
 
 
 if __name__ == "__main__":

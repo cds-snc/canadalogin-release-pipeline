@@ -88,8 +88,10 @@ class _EcsState:
     service: str
     container: str
     desired_image: str
+    desired_image_digest: str | None
     current_image: str
     task_definition_arn: str
+    primary_deployment_id: str | None
     task_definition: Mapping[str, Any]
     ssm_parameter: str | None
 
@@ -168,17 +170,28 @@ def deploy_ecs(
     unchanged: list[str] = []
     for state in states:
         resource = f"ecs:{state.cluster}/{state.service}"
-        if state.current_image == state.desired_image and not force_redeploy:
+        image_matches_desired = _image_matches_desired(state)
+        if image_matches_desired and not force_redeploy:
             print(
                 f"{resource} already runs {state.desired_image}; skipping deployment."
             )
-            _wait_for_service_stability(state, runner)
+            _wait_for_service_stability(
+                state,
+                runner,
+                expected_task_definition_arn=state.task_definition_arn,
+            )
             _update_ssm(state, runner)
             unchanged.append(resource)
             continue
 
         task_definition_arn = state.task_definition_arn
-        if state.current_image != state.desired_image:
+        force_same_image = image_matches_desired and force_redeploy
+        if force_same_image and state.primary_deployment_id is None:
+            raise ConfigError(
+                f"ECS service {state.cluster}/{state.service} has no primary "
+                "deployment identity for a forced redeploy"
+            )
+        if not image_matches_desired:
             task_definition_arn = _register_task_definition(state, runner)
 
         update_command = [
@@ -190,19 +203,34 @@ def deploy_ecs(
             "--service",
             state.service,
         ]
-        if state.current_image == state.desired_image:
+        if image_matches_desired:
             update_command.append("--force-new-deployment")
         else:
             update_command.extend(["--task-definition", task_definition_arn])
         update_command.extend(["--propagate-tags", "SERVICE"])
         _run_aws(runner, update_command)
-        _wait_for_service_stability(state, runner)
+        _wait_for_service_stability(
+            state,
+            runner,
+            expected_task_definition_arn=task_definition_arn,
+            previous_deployment_id=(
+                state.primary_deployment_id if force_same_image else None
+            ),
+        )
+        if not image_matches_desired:
+            _verify_task_definition_image(state, task_definition_arn, runner)
         _update_ssm(state, runner)
         changed.append(resource)
     return DeploymentResult(context.sha, tuple(changed), tuple(unchanged))
 
 
-def _wait_for_service_stability(state: _EcsState, runner: CommandRunner) -> None:
+def _wait_for_service_stability(
+    state: _EcsState,
+    runner: CommandRunner,
+    *,
+    expected_task_definition_arn: str,
+    previous_deployment_id: str | None = None,
+) -> None:
     deadline = time.monotonic() + ECS_ROLLOUT_TIMEOUT_SECONDS
     command = [
         "aws",
@@ -234,7 +262,11 @@ def _wait_for_service_stability(state: _EcsState, runner: CommandRunner) -> None
                         f"ECS service {state.cluster}/{state.service} reported a "
                         f"failed rollout: {diagnostics}"
                     )
-                if _ecs_service_is_stable(document):
+                if _ecs_service_is_stable(
+                    document,
+                    expected_task_definition_arn=expected_task_definition_arn,
+                    previous_deployment_id=previous_deployment_id,
+                ):
                     return
             elif document is not None:
                 diagnostics = "describe-services returned a non-object"
@@ -248,7 +280,12 @@ def _wait_for_service_stability(state: _EcsState, runner: CommandRunner) -> None
         time.sleep(min(ECS_ROLLOUT_POLL_INTERVAL_SECONDS, remaining))
 
 
-def _ecs_service_is_stable(document: Mapping[str, Any]) -> bool:
+def _ecs_service_is_stable(
+    document: Mapping[str, Any],
+    *,
+    expected_task_definition_arn: str | None = None,
+    previous_deployment_id: str | None = None,
+) -> bool:
     services = document.get("services", [])
     if not isinstance(services, list) or len(services) != 1:
         return False
@@ -260,6 +297,18 @@ def _ecs_service_is_stable(document: Mapping[str, Any]) -> bool:
         return False
     deployment = deployments[0]
     if not isinstance(deployment, Mapping):
+        return False
+    if deployment.get("status") != "PRIMARY":
+        return False
+    if (
+        expected_task_definition_arn is not None
+        and deployment.get("taskDefinition") != expected_task_definition_arn
+    ):
+        return False
+    if (
+        previous_deployment_id is not None
+        and deployment.get("id") == previous_deployment_id
+    ):
         return False
     return (
         service.get("runningCount") == service.get("desiredCount")
@@ -300,8 +349,10 @@ def _ecs_service_diagnostics(document: Mapping[str, Any]) -> str:
                 continue
             rollout_states.append(
                 {
+                    "id": deployment.get("id"),
                     "status": deployment.get("status"),
                     "rollout_state": deployment.get("rolloutState"),
+                    "task_definition": deployment.get("taskDefinition"),
                     "reason": deployment.get("rolloutStateReason"),
                     "failed_tasks": deployment.get("failedTasks"),
                 }
@@ -422,7 +473,7 @@ def _prepare_ecs(
             raise ConfigError(f"ECS deployment {deployment.name!r} has no repository")
         repository = resolve_reference(deployment.repository, context)
         desired_image = f"{repository}:{context.sha}"
-        _ensure_ecr_image(repository, context.sha, runner)
+        desired_image_digest = _ensure_ecr_image(repository, context.sha, runner)
         for service_config in deployment.services:
             cluster = resolve_reference(service_config.cluster, context)
             service = resolve_reference(service_config.service, context)
@@ -447,11 +498,24 @@ def _prepare_ecs(
                 raise ConfigError(
                     f"Unable to resolve ECS service {cluster}/{service}: {failures!r}"
                 )
-            task_definition_arn = services[0].get("taskDefinition")
+            service_document_value = services[0]
+            task_definition_arn = service_document_value.get("taskDefinition")
             if not isinstance(task_definition_arn, str) or not task_definition_arn:
                 raise ConfigError(
                     f"ECS service {cluster}/{service} has no task definition"
                 )
+            deployments = service_document_value.get("deployments", [])
+            primary_deployments = [
+                deployment
+                for deployment in deployments
+                if isinstance(deployment, Mapping)
+                and deployment.get("status") == "PRIMARY"
+            ]
+            primary_deployment_id = None
+            if len(primary_deployments) == 1:
+                candidate_id = primary_deployments[0].get("id")
+                if isinstance(candidate_id, str) and candidate_id:
+                    primary_deployment_id = candidate_id
             task_document = _json_command(
                 runner,
                 [
@@ -500,8 +564,10 @@ def _prepare_ecs(
                     service=service,
                     container=container,
                     desired_image=desired_image,
+                    desired_image_digest=desired_image_digest,
                     current_image=containers[0]["image"],
                     task_definition_arn=task_definition_arn,
+                    primary_deployment_id=primary_deployment_id,
                     task_definition=task_definition,
                     ssm_parameter=ssm_parameter,
                 )
@@ -511,7 +577,7 @@ def _prepare_ecs(
 
 def _ensure_ecr_image(
     repository_uri: str, image_tag: str, runner: CommandRunner
-) -> None:
+) -> str | None:
     registry_id, repository_name = _parse_ecr_repository(repository_uri)
     command = [
         "aws",
@@ -537,8 +603,17 @@ def _ensure_ecr_image(
         raise ConfigError(
             f"ECR returned invalid JSON for {repository_uri}:{image_tag}: {error}"
         ) from error
-    if not isinstance(document, Mapping) or not document.get("imageDetails"):
+    image_details = (
+        document.get("imageDetails") if isinstance(document, Mapping) else None
+    )
+    if not isinstance(image_details, list) or len(image_details) != 1:
         raise ConfigError(f"ECR image {repository_uri}:{image_tag} does not exist")
+    image_digest = image_details[0].get("imageDigest")
+    if registry_id and (not isinstance(image_digest, str) or not image_digest):
+        raise ConfigError(
+            f"ECR image {repository_uri}:{image_tag} returned no image digest"
+        )
+    return image_digest if isinstance(image_digest, str) else None
 
 
 def _parse_ecr_repository(repository_uri: str) -> tuple[str, str]:
@@ -553,9 +628,10 @@ def _parse_ecr_repository(repository_uri: str) -> tuple[str, str]:
 
 def _register_task_definition(state: _EcsState, runner: CommandRunner) -> str:
     task_definition = copy.deepcopy(dict(state.task_definition))
+    desired_image = _desired_image_reference(state)
     for container in task_definition["containerDefinitions"]:
         if container.get("name") == state.container:
-            container["image"] = state.desired_image
+            container["image"] = desired_image
     registration = {
         key: value
         for key, value in task_definition.items()
@@ -587,6 +663,54 @@ def _register_task_definition(state: _EcsState, runner: CommandRunner) -> str:
     if not isinstance(arn, str) or not arn:
         raise ConfigError("Registering the ECS task definition returned no ARN")
     return arn
+
+
+def _verify_task_definition_image(
+    state: _EcsState, task_definition_arn: str, runner: CommandRunner
+) -> None:
+    document = _json_command(
+        runner,
+        [
+            "aws",
+            "ecs",
+            "describe-task-definition",
+            "--task-definition",
+            task_definition_arn,
+            "--output",
+            "json",
+        ],
+    )
+    task_definition = document.get("taskDefinition")
+    if not isinstance(task_definition, Mapping):
+        raise ConfigError(
+            f"Task definition {task_definition_arn} returned no definition after rollout"
+        )
+    containers = [
+        item
+        for item in task_definition.get("containerDefinitions", [])
+        if isinstance(item, Mapping) and item.get("name") == state.container
+    ]
+    expected_image = _desired_image_reference(state)
+    if len(containers) != 1 or containers[0].get("image") != expected_image:
+        actual_image = containers[0].get("image") if len(containers) == 1 else None
+        raise ConfigError(
+            f"Task definition {task_definition_arn} deployed image {actual_image!r}; "
+            f"expected {expected_image!r}"
+        )
+
+
+def _desired_image_reference(state: _EcsState) -> str:
+    if state.desired_image_digest:
+        repository, _ = state.desired_image.rsplit(":", 1)
+        return f"{repository}@{state.desired_image_digest}"
+    return state.desired_image
+
+
+def _image_matches_desired(state: _EcsState) -> bool:
+    return state.current_image in {
+        state.desired_image,
+        _desired_image_reference(state),
+    }
 
 
 def _update_ssm(state: _EcsState, runner: CommandRunner) -> None:

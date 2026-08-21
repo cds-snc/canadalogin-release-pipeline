@@ -73,15 +73,16 @@ on:
         default: ""
         type: string
 
-permissions:
-  contents: write
-  id-token: write
-
 jobs:
   build:
     if: inputs.enabled
     name: Build artifact
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_uri: ${{ steps.build.outputs.image_uri }}
     environment:
       name: ${{ inputs.environment }}
       deployment: false
@@ -90,6 +91,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up release tooling
         uses: $/actions/setup
@@ -150,17 +152,6 @@ jobs:
           --github-ref "$GITHUB_REF"
           --github-output
 
-      - name: Generate image SBOM
-        if: inputs.sbom-enabled
-        uses: cds-snc/security-tools/.github/actions/generate-sbom@d123fa2b895f7ef5b400fad333d2101b103b2e64 # v4.0.4
-        env:
-          TRIVY_DB_REPOSITORY: ${{ vars.TRIVY_DB_REPOSITORY }}
-        with:
-          docker_image: ${{ steps.build.outputs.image_uri }}
-          dockerfile_path: ${{ inputs.sbom-dockerfile }}
-          sbom_name: ${{ inputs.sbom-name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Notify Slack about build failure
         if: failure() && inputs.notify-failure
         env:
@@ -180,3 +171,66 @@ jobs:
           --sha "$GITHUB_SHA"
           --workflow-url "$WORKFLOW_URL"
           --detail "$BUILD_NAME"
+
+  sbom:
+    if: inputs.sbom-enabled && needs.build.result == 'success'
+    needs: build
+    name: Publish image SBOM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    environment:
+      name: ${{ inputs.environment }}
+      deployment: false
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up release tooling
+        uses: $/actions/setup
+
+      - name: Configure AWS credentials
+        if: inputs.aws-role != ''
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ inputs.aws-role }}
+          role-session-name: CanadaLoginReleaseSbom
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Log in to Amazon ECR
+        if: inputs.kind == 'docker'
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+
+      - name: Generate image SBOM
+        uses: cds-snc/security-tools/.github/actions/generate-sbom@d123fa2b895f7ef5b400fad333d2101b103b2e64 # v4.0.4
+        env:
+          TRIVY_DB_REPOSITORY: ${{ vars.TRIVY_DB_REPOSITORY }}
+        with:
+          docker_image: ${{ needs.build.outputs.image_uri }}
+          dockerfile_path: ${{ inputs.sbom-dockerfile }}
+          sbom_name: ${{ inputs.sbom-name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Slack about SBOM failure
+        if: failure() && inputs.notify-failure
+        env:
+          BUILD_ENVIRONMENT: ${{ inputs.target-environment }}
+          BUILD_NAME: ${{ inputs.name }}
+          CONFIG_PATH: ${{ inputs.config-path }}
+          RELEASE_PIPELINE_VARS: ${{ toJSON(vars) }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK: ${{ secrets.GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK }}
+          GC_SIGNIN_WEBSITE_OPS_SLACK_ALERT_WEBHOOK: ${{ secrets.GC_SIGNIN_WEBSITE_OPS_SLACK_ALERT_WEBHOOK }}
+          CL_DEV_SLACK_ALERT_WEBHOOK: ${{ secrets.CL_DEV_SLACK_ALERT_WEBHOOK }}
+        run: >-
+          canadalogin-release notify
+          --status build-failure
+          --config "$CONFIG_PATH"
+          --environment "$BUILD_ENVIRONMENT"
+          --sha "$GITHUB_SHA"
+          --workflow-url "$WORKFLOW_URL"
+          --detail "$BUILD_NAME SBOM"

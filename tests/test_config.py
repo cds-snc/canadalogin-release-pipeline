@@ -168,6 +168,31 @@ container = { var = "ECS_SERVICE" }
         with self.assertRaisesRegex(ConfigError, "must use one AWS role"):
             self.load(config)
 
+    def test_rejects_unknown_build_environment(self) -> None:
+        invalid = BASE_CONFIG.replace(
+            'name = "backend"\nkind = "docker"\nenvironments = ["dev"]',
+            'name = "backend"\nkind = "docker"\nenvironments = ["ghost"]',
+        )
+
+        with self.assertRaisesRegex(ConfigError, r"builds\[1\].environments"):
+            self.load(invalid)
+
+    def test_rejects_unknown_source_environment(self) -> None:
+        invalid = BASE_CONFIG.replace(
+            'name = "backend"\nkind = "docker"\nenvironments = ["dev"]',
+            'name = "backend"\nkind = "docker"\nenvironments = ["dev"]\n'
+            'source_environment = "ghost"',
+        )
+
+        with self.assertRaisesRegex(ConfigError, "source_environment"):
+            self.load(invalid)
+
+    def test_rejects_unknown_repository_dispatch_target(self) -> None:
+        invalid = BASE_CONFIG + '\n[events.repository_dispatch]\nrefresh = ["ghost"]\n'
+
+        with self.assertRaisesRegex(ConfigError, "repository_dispatch.refresh"):
+            self.load(invalid)
+
     def test_all_current_repository_examples_are_valid(self) -> None:
         examples = Path(__file__).parents[1] / "examples"
         paths = sorted(examples.glob("*/release-pipeline.toml"))

@@ -5,6 +5,32 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+AWS_CREDENTIALS = frozenset(
+    {
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_SECURITY_TOKEN",
+        "AWS_WEB_IDENTITY_TOKEN_FILE",
+        "AWS_ROLE_ARN",
+        "AWS_PROFILE",
+        "AWS_DEFAULT_PROFILE",
+        "AWS_CONFIG_FILE",
+        "AWS_SHARED_CREDENTIALS_FILE",
+    }
+)
+GITHUB_CREDENTIALS = frozenset(
+    {
+        "GITHUB_TOKEN",
+        "GH_TOKEN",
+        "GITHUB_APP_TOKEN",
+        "ACTIONS_RUNTIME_TOKEN",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+        "ACTIONS_ID_TOKEN_REQUEST_URL",
+    }
+)
+WORKFLOW_CREDENTIALS = frozenset({*AWS_CREDENTIALS, *GITHUB_CREDENTIALS})
+
 
 class CommandError(RuntimeError):
     """Raised when an external command fails."""

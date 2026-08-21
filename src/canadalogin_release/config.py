@@ -376,6 +376,22 @@ def _parse_pipeline(raw: Mapping[str, Any]) -> PipelineConfig:
     )
     _ensure_unique((build.name for build in builds), "build names")
     _ensure_unique((deployment.name for deployment in deployments), "deployment names")
+    deployable_environments = set(deploy)
+    for index, build in enumerate(builds):
+        unknown_build_environments = set(build.environments) - deployable_environments
+        if unknown_build_environments:
+            raise ConfigError(
+                f"builds[{index}].environments contains undeployable environments: "
+                + ", ".join(sorted(unknown_build_environments))
+            )
+        if (
+            build.source_environment
+            and build.source_environment not in deployable_environments
+        ):
+            raise ConfigError(
+                f"builds[{index}].source_environment "
+                f"{build.source_environment!r} is not deployable"
+            )
 
     hooks_raw = _optional_mapping(raw, "hooks", "hooks")
     _reject_unknown(
@@ -403,6 +419,13 @@ def _parse_pipeline(raw: Mapping[str, Any]) -> PipelineConfig:
         )
         for event, targets in dispatch_raw.items()
     }
+    for event, targets in repository_dispatch.items():
+        unknown_targets = set(targets) - set(deploy)
+        if unknown_targets:
+            raise ConfigError(
+                f"events.repository_dispatch.{event} contains undeployable "
+                "environments: " + ", ".join(sorted(unknown_targets))
+            )
 
     config = PipelineConfig(
         application=application,

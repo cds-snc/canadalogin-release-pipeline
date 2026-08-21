@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import tempfile
 import unittest
@@ -96,6 +97,8 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(command_environment["VITE_RELEASE_TAG"], "v1.2.3")
         self.assertIn("BUILD_SECRET_1", runner.unset_environments[0])
         self.assertEqual(runner.commands[-1][0][-1], "--delete")
+        self.assertIn("AWS_ACCESS_KEY_ID", runner.unset_environments[0])
+        self.assertIn("GITHUB_TOKEN", runner.unset_environments[0])
 
     def test_docker_build_applies_sha_latest_release_and_build_args(self) -> None:
         config = self.config("gc-signin-user-selfservice-webapp")
@@ -120,6 +123,8 @@ class BuildTest(unittest.TestCase):
         self.assertIn("example.dkr/repository:v1.2.3", build_command)
         self.assertEqual(result.image_uri, "example.dkr/repository:abc123")
         self.assertEqual(len(runner.commands), 4)
+        self.assertIn("AWS_SECRET_ACCESS_KEY", runner.unset_environments[0])
+        self.assertIn("GITHUB_TOKEN", runner.unset_environments[0])
 
     def test_source_sha_controls_checkout_tags_and_result_identity(self) -> None:
         config = self.config("gc-signin-user-selfservice-webapp")
@@ -222,6 +227,209 @@ class BuildTest(unittest.TestCase):
                 )
 
         self.assertFalse(any(command[0][0] == "aws" for command in runner.commands))
+
+    def test_existing_artifact_is_not_overwritten(self) -> None:
+        config = self.config("gc-signin-static-website")
+        runner = RecordingRunner(responses=[(0, ""), (0, ""), (0, "object\n")])
+        with tempfile.TemporaryDirectory() as directory:
+            repository = Path(directory)
+            (repository / "website" / "_site").mkdir(parents=True)
+            execute_build(
+                config,
+                build_name="website",
+                context=self.context(
+                    repository,
+                    "dev",
+                    variables={
+                        "GOOGLE_ANALYTICS_ID": "G-123",
+                        "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "build-bucket",
+                    },
+                ),
+                runner=runner,
+            )
+
+        self.assertFalse(
+            any(command[0][:3] == ("aws", "s3", "sync") for command in runner.commands)
+        )
+
+    def test_ecr_sha_build_requires_immutable_repository_and_records_digest(
+        self,
+    ) -> None:
+        config = self.config("gc-signin-user-selfservice-webapp")
+        runner = RecordingRunner(
+            responses=[
+                (
+                    0,
+                    json.dumps(
+                        {
+                            "repositories": [
+                                {
+                                    "imageTagMutability": "IMMUTABLE_WITH_EXCLUSION",
+                                    "imageTagMutabilityExclusionFilters": [
+                                        {"filterType": "WILDCARD", "filter": "latest"}
+                                    ],
+                                }
+                            ]
+                        }
+                    ),
+                ),
+                (1, ""),
+                (1, ""),
+                (0, ""),
+                (0, ""),
+                (0, ""),
+                (0, ""),
+                (0, json.dumps({"imageDetails": [{"imageDigest": "sha256:abc"}]})),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            result = execute_build(
+                config,
+                build_name="backend",
+                context=self.context(
+                    Path(directory),
+                    "dev",
+                    variables={
+                        "ARTIFACT_ECR_REPOSITORY": (
+                            "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
+                        )
+                    },
+                ),
+                runner=runner,
+            )
+
+        self.assertEqual(result.image_digest, "sha256:abc")
+        self.assertIn("describe-repositories", runner.commands[0][0])
+
+    def test_ecr_sha_build_reuses_existing_tag(self) -> None:
+        config = self.config("gc-signin-user-selfservice-webapp")
+        runner = RecordingRunner(
+            responses=[
+                (
+                    0,
+                    json.dumps(
+                        {
+                            "repositories": [
+                                {
+                                    "imageTagMutability": "IMMUTABLE_WITH_EXCLUSION",
+                                    "imageTagMutabilityExclusionFilters": [
+                                        {"filterType": "WILDCARD", "filter": "latest"}
+                                    ],
+                                }
+                            ]
+                        }
+                    ),
+                ),
+                (0, json.dumps({"imageDetails": [{"imageDigest": "sha256:old"}]})),
+                (0, json.dumps({"imageDetails": [{"imageDigest": "sha256:old"}]})),
+            ]
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            result = execute_build(
+                config,
+                build_name="backend",
+                context=self.context(
+                    Path(directory),
+                    "dev",
+                    variables={
+                        "ARTIFACT_ECR_REPOSITORY": (
+                            "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
+                        )
+                    },
+                ),
+                runner=runner,
+            )
+
+        self.assertEqual(result.image_digest, "sha256:old")
+        self.assertFalse(any(command[0][0] == "docker" for command in runner.commands))
+
+    def test_ecr_existing_sha_rejects_missing_release_tag(self) -> None:
+        config = self.config("gc-signin-user-selfservice-webapp")
+        runner = RecordingRunner(
+            responses=[
+                (
+                    0,
+                    json.dumps(
+                        {
+                            "repositories": [
+                                {
+                                    "imageTagMutability": "IMMUTABLE_WITH_EXCLUSION",
+                                    "imageTagMutabilityExclusionFilters": [
+                                        {"filterType": "WILDCARD", "filter": "latest"}
+                                    ],
+                                }
+                            ]
+                        }
+                    ),
+                ),
+                (0, json.dumps({"imageDetails": [{"imageDigest": "sha256:old"}]})),
+                (1, ""),
+            ]
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ConfigError, "missing for existing SHA"),
+        ):
+            execute_build(
+                config,
+                build_name="backend",
+                context=self.context(
+                    Path(directory),
+                    "dev",
+                    variables={
+                        "ARTIFACT_ECR_REPOSITORY": (
+                            "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
+                        )
+                    },
+                ),
+                runner=runner,
+            )
+
+        self.assertFalse(any(command[0][0] == "docker" for command in runner.commands))
+
+    def test_ecr_existing_sha_rejects_divergent_release_tag(self) -> None:
+        config = self.config("gc-signin-user-selfservice-webapp")
+        runner = RecordingRunner(
+            responses=[
+                (
+                    0,
+                    json.dumps(
+                        {
+                            "repositories": [
+                                {
+                                    "imageTagMutability": "IMMUTABLE_WITH_EXCLUSION",
+                                    "imageTagMutabilityExclusionFilters": [
+                                        {"filterType": "WILDCARD", "filter": "latest"}
+                                    ],
+                                }
+                            ]
+                        }
+                    ),
+                ),
+                (0, json.dumps({"imageDetails": [{"imageDigest": "sha256:old"}]})),
+                (0, json.dumps({"imageDetails": [{"imageDigest": "sha256:new"}]})),
+            ]
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            self.assertRaisesRegex(ConfigError, "expected 'sha256:old'"),
+        ):
+            execute_build(
+                config,
+                build_name="backend",
+                context=self.context(
+                    Path(directory),
+                    "dev",
+                    variables={
+                        "ARTIFACT_ECR_REPOSITORY": (
+                            "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
+                        )
+                    },
+                ),
+                runner=runner,
+            )
+
+        self.assertFalse(any(command[0][0] == "docker" for command in runner.commands))
 
 
 if __name__ == "__main__":

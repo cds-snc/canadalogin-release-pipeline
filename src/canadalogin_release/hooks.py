@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .commands import CommandRunner
+from .commands import WORKFLOW_CREDENTIALS, CommandRunner
 from .config import ConfigError, PipelineConfig
 from .runtime import RuntimeContext
 
@@ -27,4 +27,9 @@ def execute_hook(
         "RELEASE_FORCE_REDEPLOY": "true" if force_redeploy else "false",
     }
     for command in commands:
-        runner.run(command, cwd=context.repository, environment=environment)
+        runner.run(
+            command,
+            cwd=context.repository,
+            environment=environment,
+            unset_environment=WORKFLOW_CREDENTIALS,
+        )
