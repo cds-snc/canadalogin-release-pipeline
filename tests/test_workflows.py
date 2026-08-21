@@ -40,7 +40,32 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("needs: [plan, release_please, required_builds]", workflow)
         self.assertIn("needs.required_builds.result == 'success'", workflow)
         self.assertIn("max-parallel: 1", workflow)
-        self.assertIn("concurrency:\n  group: canadalogin-release-", workflow)
+        self.assertIn(
+            "pipeline_id:\n        description: Optional concurrency namespace",
+            workflow,
+        )
+        self.assertIn("default: default", workflow)
+        self.assertIn(
+            "group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-",
+            workflow,
+        )
+        self.assertIn("pipeline_id: ${{ inputs.pipeline_id }}", workflow)
+
+    def test_environment_deployments_share_the_pipeline_concurrency_namespace(
+        self,
+    ) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "deploy-environment.yml"
+        ).read_text()
+
+        self.assertIn(
+            "pipeline_id:\n        description: Concurrency namespace", workflow
+        )
+        self.assertIn("default: default", workflow)
+        self.assertIn(
+            "group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ inputs.environment }}",
+            workflow,
+        )
 
     def test_workflow_checkouts_do_not_persist_credentials(self) -> None:
         for path in self.workflow_files():
