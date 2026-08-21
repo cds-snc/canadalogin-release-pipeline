@@ -9,7 +9,7 @@ The public workflow is `.github/workflows/release.yml`. It calls two nested reus
 - `.github/workflows/build.yml` declares the selected GitHub environment and builds one artifact.
 - `.github/workflows/deploy-environment.yml` declares the selected GitHub environment and deploys every component for it.
 
-`actions/setup` installs the Python package from the exact commit containing the running reusable workflow. The Python CLI loads a caller-owned TOML configuration and performs planning, version resolution, builds, AWS operations, hooks, Slack notifications, and pull request comments.
+`actions/setup` installs the Python package from the exact commit containing the running reusable workflow. The Python CLI loads a caller-owned YAML configuration and performs planning, version resolution, builds, AWS operations, hooks, Slack notifications, and pull request comments.
 
 ## Why not only a custom action
 
@@ -33,7 +33,7 @@ The release system instead provides tested primitives for current shared behavio
 - release and version planning
 - notifications and pull request comments
 
-TOML declares those primitives. Hooks are argv arrays executed without a shell from the checked-out caller repository. This provides an escape hatch without copying the shared orchestration.
+YAML declares those primitives. Hooks are argv arrays executed without a shell from the checked-out caller repository. This provides an escape hatch without copying the shared orchestration.
 
 ## GitHub Actions behavior used
 

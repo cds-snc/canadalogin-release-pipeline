@@ -6,7 +6,7 @@ on:
       config-path:
         description: Path to the caller repository's release configuration.
         required: false
-        default: .github/release-pipeline.toml
+        default: .github/release-pipeline-configuration.yml
         type: string
       pipeline_id:
         description: Optional concurrency namespace for independent pipelines in one repository.

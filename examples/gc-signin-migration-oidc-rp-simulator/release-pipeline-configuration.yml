@@ -1,0 +1,46 @@
+schema_version: 1
+application: GC Sign-In Migration RP Simulator
+aws_region: ca-central-1
+
+environments:
+  development: dev
+  deploy: [dev, test, staging]
+  versioned: [test, staging]
+
+notifications:
+  info_webhook:
+    secret: GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK
+  alert_webhooks:
+    - secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK
+
+builds:
+  - name: backend
+    kind: docker
+    environments: [dev]
+    aws_role: github_action_push_ecr_ecs-migration-rp-sim
+    dns_audit: true
+    shared_artifact: true
+    docker:
+      context: multi-rp-simulator
+      dockerfile: multi-rp-simulator/Dockerfile
+      repository:
+        var: ARTIFACT_ECR_REPOSITORY
+      tags: [sha, latest]
+    sbom:
+      name: gc-signin-dev-rp-sim
+      dockerfile: multi-rp-simulator/Dockerfile
+
+deployments:
+  - name: backend
+    kind: ecs
+    aws_role: github_action_push_ecr_ecs-migration-rp-sim
+    repository:
+      var: ARTIFACT_ECR_REPOSITORY
+    services:
+      - cluster:
+          var: ECS_CLUSTER
+        service:
+          var: ECS_SERVICE
+        container:
+          var: ECS_SERVICE
+        ssm_parameter: /ecs/{cluster}/{service}/container-image

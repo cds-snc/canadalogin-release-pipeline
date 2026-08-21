@@ -1,0 +1,60 @@
+schema_version: 1
+application: GC Sign-In Static Website
+aws_region: ca-central-1
+
+environments:
+  development: dev
+  deploy: [dev, test, staging, prod]
+  versioned: [test, staging, prod]
+
+notifications:
+  info_webhook:
+    secret: GC_SIGNIN_WEBSITE_OPS_SLACK_INFO_WEBHOOK
+  alert_webhooks:
+    - secret: GC_SIGNIN_WEBSITE_OPS_SLACK_ALERT_WEBHOOK
+
+events:
+  repository_dispatch:
+    gc-articles-update: [dev]
+
+builds:
+  - name: website
+    kind: command
+    environments: [dev, test, staging, prod]
+    aws_role: github_action_push_S3-canadalogin-static-website
+    node_version: latest
+    command:
+      working_directory: website
+      steps:
+        - [npm, install]
+        - [npm, run, build]
+      environment:
+        WEBSITE_ENVIRONMENT: "{environment}"
+        GOOGLE_ANALYTICS_ID:
+          var: GOOGLE_ANALYTICS_ID
+    s3_artifact:
+      source: website/_site
+      bucket:
+        var: STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET
+      skip_if_exists_non_development: true
+
+deployments:
+  - name: website
+    kind: s3
+    aws_role: github_action_push_S3-canadalogin-static-website
+    artifact_bucket:
+      var: STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET
+    targets:
+      - bucket:
+          var: EN_S3_BUCKET
+        delete: true
+      - bucket:
+          var: FR_S3_BUCKET
+        delete: true
+    invalidations:
+      - distribution:
+          var: EN_CLOUDFRONT_DISTRIBUTION_ID
+        paths: ["/*", "/en/*", "/en/index.html"]
+      - distribution:
+          var: FR_CLOUDFRONT_DISTRIBUTION_ID
+        paths: ["/*", "/fr/*", "/fr/index.html"]

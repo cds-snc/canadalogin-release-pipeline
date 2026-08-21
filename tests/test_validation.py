@@ -9,13 +9,13 @@ from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.validation import validate_repository
 
 CONFIG = """
-schema_version = 1
-application = "Validation example"
+schema_version: 1
+application: Validation example
 
-[environments]
-development = "dev"
-deploy = ["dev", "test", "prod"]
-versioned = ["test", "prod"]
+environments:
+    development: dev
+    deploy: [dev, test, prod]
+    versioned: [test, prod]
 """
 
 
@@ -23,7 +23,7 @@ class ValidationTest(unittest.TestCase):
     def repository(self) -> tuple[tempfile.TemporaryDirectory, PipelineConfig]:
         directory = tempfile.TemporaryDirectory()
         root = Path(directory.name)
-        config_path = root / ".github" / "release-pipeline.toml"
+        config_path = root / ".github" / "release-pipeline-configuration.yml"
         config_path.parent.mkdir()
         config_path.write_text(CONFIG)
         versions = root / ".deployed_versions"

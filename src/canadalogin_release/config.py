@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import os
-import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 
 class ConfigError(ValueError):
@@ -73,7 +74,7 @@ class ValueReference:
         if isinstance(raw, str):
             return cls("value", raw)
         if not isinstance(raw, Mapping):
-            raise ConfigError(f"{location} must be a string or reference table")
+            raise ConfigError(f"{location} must be a string or reference mapping")
 
         keys = set(raw)
         source_keys = keys & {"value", "var", "secret"}
@@ -238,10 +239,12 @@ class PipelineConfig:
     def load(cls, path: str | Path) -> PipelineConfig:
         config_path = Path(path)
         try:
-            with config_path.open("rb") as config_file:
-                raw = tomllib.load(config_file)
-        except (OSError, tomllib.TOMLDecodeError) as error:
+            with config_path.open(encoding="utf-8") as config_file:
+                raw = yaml.safe_load(config_file)
+        except (OSError, UnicodeError, yaml.YAMLError) as error:
             raise ConfigError(f"Unable to load {config_path}: {error}") from error
+        if not isinstance(raw, Mapping):
+            raise ConfigError(f"{config_path} must contain a mapping at the root")
         return _parse_pipeline(raw)
 
     def deployment_roles(self, environment: str) -> dict[str, str]:
@@ -805,7 +808,7 @@ def _commands(raw: object, location: str) -> tuple[tuple[str, ...], ...]:
 
 def _mapping(raw: object, location: str) -> Mapping[str, Any]:
     if not isinstance(raw, Mapping):
-        raise ConfigError(f"{location} must be a table")
+        raise ConfigError(f"{location} must be a mapping")
     return raw
 
 
@@ -838,7 +841,7 @@ def _optional_mapping(
 
 def _sequence(raw: object, location: str) -> Sequence[Any]:
     if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
-        raise ConfigError(f"{location} must be an array")
+        raise ConfigError(f"{location} must be a sequence")
     return raw
 
 

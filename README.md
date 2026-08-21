@@ -3,7 +3,7 @@
 This repository centralizes the release pipeline used by CanadaLogin applications. A caller owns two small files:
 
 1. `.github/workflows/release-pipeline.yml`, which selects triggers and calls the versioned reusable workflow.
-2. `.github/release-pipeline.toml`, which declares builds, deployment infrastructure, notifications, and optional hooks.
+2. `.github/release-pipeline-configuration.yml`, which declares builds, deployment infrastructure, notifications, and optional hooks.
 
 Release orchestration stays here. Application-specific commands and infrastructure identifiers stay with the application.
 
@@ -27,7 +27,7 @@ All release decisions and AWS command orchestration are implemented in Python. W
 
 ## Quick start
 
-Copy [the caller workflow](examples/caller/release-pipeline.yml) to `.github/workflows/release-pipeline.yml`. Copy the closest application configuration from [examples](examples) to `.github/release-pipeline.toml`, then update its resource references and commands.
+Copy [the caller workflow](examples/caller/release-pipeline.yml) to `.github/workflows/release-pipeline.yml`. Copy the closest application configuration from [examples](examples) to `.github/release-pipeline-configuration.yml`, then update its resource references and commands.
 
 The caller examples pin a reviewed semver release:
 
@@ -62,17 +62,17 @@ Every required build must pass before any environment begins deployment. Compone
 
 ## Configuration examples
 
-- [Manage application](examples/gc-signin-user-selfservice-webapp/release-pipeline.toml)
-- [Static website](examples/gc-signin-static-website/release-pipeline.toml)
-- [Partner portal](examples/gc-signin-partner-portal/release-pipeline.toml)
-- [Migration application](examples/gc-sign-in-migration/release-pipeline.toml)
-- [Migration RP simulator](examples/gc-signin-migration-oidc-rp-simulator/release-pipeline.toml)
+- [Manage application](examples/gc-signin-user-selfservice-webapp/release-pipeline-configuration.yml)
+- [Static website](examples/gc-signin-static-website/release-pipeline-configuration.yml)
+- [Partner portal](examples/gc-signin-partner-portal/release-pipeline-configuration.yml)
+- [Migration application](examples/gc-sign-in-migration/release-pipeline-configuration.yml)
+- [Migration RP simulator](examples/gc-signin-migration-oidc-rp-simulator/release-pipeline-configuration.yml)
 
 These are complete mappings of the five release workflows inspected in August 2026.
 
 ## Development
 
-The runtime supports Python 3.11 or newer and has no third-party Python dependencies.
+The runtime supports Python 3.11 or newer and requires PyYAML.
 
 ```sh
 python3 -m venv .venv
@@ -83,7 +83,7 @@ python3 -m venv .venv
 Validate a configuration:
 
 ```sh
-canadalogin-release validate --config examples/gc-signin-user-selfservice-webapp/release-pipeline.toml
+canadalogin-release validate --config examples/gc-signin-user-selfservice-webapp/release-pipeline-configuration.yml
 ```
 
 ## Documentation
