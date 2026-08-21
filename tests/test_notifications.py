@@ -14,7 +14,9 @@ EXAMPLES = Path(__file__).parents[1] / "examples"
 class NotificationTest(unittest.TestCase):
     def test_failure_names_environment_and_sends_every_alert_webhook(self) -> None:
         config = PipelineConfig.load(
-            EXAMPLES / "gc-signin-user-selfservice-webapp" / "release-pipeline.toml"
+            EXAMPLES
+            / "gc-signin-user-selfservice-webapp"
+            / "release-pipeline-configuration.yml"
         )
         context = RuntimeContext.create(
             repository=".",

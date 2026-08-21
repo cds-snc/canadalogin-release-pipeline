@@ -100,6 +100,6 @@ Use DynamoDB when conditional locks, transaction history, and component state ne
 
 ## Compatibility with version 1
 
-The caller workflow and TOML can remain stable. The Python deploy engine can add `discover`, `prepare`, `commit`, `verify`, and `rollback` phases behind the existing S3/ECS declarations. Existing health hooks become the application verification phase. New configuration should be additive, for example blue/green target groups or frontend pointer details.
+The caller workflow and YAML configuration can remain stable. The Python deploy engine can add `discover`, `prepare`, `commit`, `verify`, and `rollback` phases behind the existing S3/ECS declarations. Existing health hooks become the application verification phase. New configuration should be additive, for example blue/green target groups or frontend pointer details.
 
 Automatic rollback should be enabled per environment only after repeated prepare/commit/rollback drills and alarms for rollback failure are in place.

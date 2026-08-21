@@ -48,7 +48,9 @@ class AwsRunner:
 
 class DeployTest(unittest.TestCase):
     def config(self, repository: str) -> PipelineConfig:
-        return PipelineConfig.load(EXAMPLES / repository / "release-pipeline.toml")
+        return PipelineConfig.load(
+            EXAMPLES / repository / "release-pipeline-configuration.yml"
+        )
 
     def context(
         self,

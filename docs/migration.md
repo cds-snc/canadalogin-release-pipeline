@@ -11,7 +11,7 @@
 
 ## Migrate a caller
 
-1. Copy the closest file under `examples/<repository>/release-pipeline.toml` to `.github/release-pipeline.toml`.
+1. Copy the closest file under `examples/<repository>/release-pipeline-configuration.yml` to `.github/release-pipeline-configuration.yml`.
 2. Copy [the caller workflow](../examples/caller/release-pipeline.yml) to `.github/workflows/release-pipeline.yml`. Use the static-site variant when `gc-articles-update` is required.
 3. Pin the caller to a reviewed, protected `v1.0.6` release tag or full commit SHA. A full SHA is GitHub's immutable form; do not use `main` in a production caller.
 4. Keep `.release-please-manifest.json`, `release-please-config.json`, and `.deployed_versions` unchanged.

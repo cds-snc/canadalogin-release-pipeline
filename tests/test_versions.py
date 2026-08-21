@@ -26,16 +26,16 @@ class VersionsTest(unittest.TestCase):
             self.git(repository, "init", "-b", "main")
             self.git(repository, "config", "user.name", "Release Test")
             self.git(repository, "config", "user.email", "release@example.invalid")
-            config_path = repository / "release-pipeline.toml"
+            config_path = repository / "release-pipeline-configuration.yml"
             config_path.write_text(
                 """
-schema_version = 1
-application = "Release test"
+schema_version: 1
+application: Release test
 
-[environments]
-development = "dev"
-deploy = ["dev", "test"]
-versioned = ["test"]
+environments:
+    development: dev
+    deploy: [dev, test]
+    versioned: [test]
 """
             )
             versions = repository / ".deployed_versions"

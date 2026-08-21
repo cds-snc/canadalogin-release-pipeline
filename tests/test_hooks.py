@@ -33,7 +33,7 @@ class RecordingRunner:
 class HookTest(unittest.TestCase):
     def test_hooks_do_not_inherit_workflow_credentials(self) -> None:
         example = Path(__file__).parents[1] / "examples" / "gc-signin-static-website"
-        config = PipelineConfig.load(example / "release-pipeline.toml")
+        config = PipelineConfig.load(example / "release-pipeline-configuration.yml")
         config = config.__class__(
             **{
                 **config.__dict__,

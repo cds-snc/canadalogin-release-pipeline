@@ -14,7 +14,9 @@ EXAMPLES = Path(__file__).parents[1] / "examples"
 
 class PlannerTest(unittest.TestCase):
     def config(self, repository: str) -> PipelineConfig:
-        return PipelineConfig.load(EXAMPLES / repository / "release-pipeline.toml")
+        return PipelineConfig.load(
+            EXAMPLES / repository / "release-pipeline-configuration.yml"
+        )
 
     def repository_with_version(
         self, environment: str, version: str

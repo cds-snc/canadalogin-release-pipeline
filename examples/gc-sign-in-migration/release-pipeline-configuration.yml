@@ -1,0 +1,89 @@
+schema_version: 1
+application: GC Sign-In Migration Application
+aws_region: ca-central-1
+
+environments:
+  development: dev
+  deploy: [dev, test, staging, prod]
+  versioned: [test, staging, prod]
+
+notifications:
+  info_webhook:
+    secret: GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK
+  alert_webhooks:
+    - secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK
+
+builds:
+  - name: frontend
+    kind: command
+    environments: [dev, test, staging, prod]
+    aws_role: github_action_push_S3-migration-app
+    node_version: latest
+    command:
+      working_directory: frontend
+      steps:
+        - [npm, install]
+        - [npm, run, build]
+      environment:
+        VITE_BACKEND_API_URL:
+          var: VITE_BACKEND_API_URL
+        VITE_GOOGLE_ANALYTICS_ID:
+          var: VITE_GOOGLE_ANALYTICS_ID
+    s3_artifact:
+      source: frontend/dist
+      bucket:
+        var: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET
+  - name: backend
+    kind: docker
+    environments: [dev]
+    aws_role: github_action_manage_push_ecr_ecs-migration-app
+    dns_audit: true
+    shared_artifact: true
+    docker:
+      context: backend
+      dockerfile: backend/Dockerfile
+      repository:
+        var: ARTIFACT_ECR_REPOSITORY
+      tags: [sha]
+    sbom:
+      name: gc-signin-migration-dev-backend-api
+      dockerfile: backend/Dockerfile
+  - name: load-test
+    kind: docker
+    environments: [staging]
+    aws_role: github_action_manage_push_ecr_ecs-migration-app
+    source_environment: staging
+    gates_deployment: false
+    docker:
+      context: load_tests
+      dockerfile: load_tests/Dockerfile
+      repository:
+        var: LOAD_TEST_ECR_REPOSITORY
+      tags: [latest]
+
+deployments:
+  - name: frontend
+    kind: s3
+    aws_role: github_action_push_S3-migration-app
+    artifact_bucket:
+      var: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET
+    targets:
+      - bucket:
+          var: FRONTEND_APP_S3_BUCKET
+    invalidations:
+      - distribution:
+          var: FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID
+        paths: [/index.html]
+  - name: backend
+    kind: ecs
+    aws_role: github_action_manage_push_ecr_ecs-migration-app
+    repository:
+      var: ARTIFACT_ECR_REPOSITORY
+    services:
+      - cluster:
+          var: ECS_CLUSTER
+        service:
+          var: ECS_SERVICE
+        container:
+          var: ECS_SERVICE
+        ssm_parameter: /ecs/{cluster}/{service}/container-image
