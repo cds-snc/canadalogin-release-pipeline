@@ -100,7 +100,7 @@ sequenceDiagram
 - Build matrices use `fail-fast: false` so all failures are visible before deployment is considered.
 - S3 artifacts, desired ECR images, and ECS services/task definitions are checked before the first built-in deployment mutation.
 - Every version tag is resolved during planning. A push may resolve the current release manifest to the current SHA while release-please creates that tag later in the same run; manual runs remain strict.
-- The reusable release workflow serializes plan, release-please, build, and deployment work per caller repository; caller workflows retain the same lock as a defense against independent caller jobs.
+- The reusable release workflow serializes plan, release-please, build, and deployment work per caller repository and pipeline ID; the optional pipeline ID defaults to `default`, while caller workflows retain the same lock as a defense against independent caller jobs.
 - SSM is written only after ECS reaches stable state.
 - Failure hooks and Slack alerts run in the environment job and therefore name the affected environment.
 

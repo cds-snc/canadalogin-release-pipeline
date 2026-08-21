@@ -8,6 +8,11 @@ on:
         required: false
         default: .github/release-pipeline.toml
         type: string
+      pipeline_id:
+        description: Optional concurrency namespace for independent pipelines in one repository.
+        required: false
+        default: default
+        type: string
       environment:
         description: Manual deployment target. Use "all" for every enabled environment.
         required: false
@@ -25,7 +30,7 @@ on:
         type: boolean
 
 concurrency:
-  group: canadalogin-release-${{ github.repository }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
+  group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
   queue: max
 
 jobs:
@@ -240,6 +245,7 @@ jobs:
     uses: $/.github/workflows/deploy-environment.yml
     with:
       config-path: ${{ inputs.config-path }}
+      pipeline_id: ${{ inputs.pipeline_id }}
       enabled: ${{ matrix.enabled }}
       environment: ${{ matrix.environment }}
       sha: ${{ matrix.sha }}

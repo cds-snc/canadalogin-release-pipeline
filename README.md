@@ -34,11 +34,11 @@ The caller examples pin a reviewed semver release:
 ```yaml
 jobs:
   release:
-    uses: cds-snc/canadalogin-release-system/.github/workflows/release.yml@v1.0.5
+    uses: cds-snc/canadalogin-release-system/.github/workflows/release.yml@v1.0.6
     secrets: inherit
 ```
 
-Git tags can technically be moved. Protect release tags and never retarget them; callers requiring GitHub's strongest immutable pin should replace `v1.0.5` with that release's full 40-character commit SHA.
+Git tags can technically be moved. Protect release tags and never retarget them; callers requiring GitHub's strongest immutable pin should replace `v1.0.6` with that release's full 40-character commit SHA.
 
 Keep the existing release-please files and `.deployed_versions` directory. The shared workflow reads them from the caller repository.
 
