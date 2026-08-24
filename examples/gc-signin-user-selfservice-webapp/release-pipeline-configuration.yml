@@ -4,11 +4,6 @@ profile: spa-ecs
 
 environments: [dev, test, staging, prod]
 
-notifications:
-  alert_webhooks:
-    - secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK
-    - secret: CL_DEV_SLACK_ALERT_WEBHOOK
-
 frontend:
   environment:
     VITE_BACKEND_API_URL:

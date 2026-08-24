@@ -18,7 +18,11 @@ from .deploy import (
 )
 from .github import promotions_from_json, sync_deployment_comment
 from .hooks import execute_hook
-from .notifications import notify, notify_pipeline_failure
+from .notifications import (
+    notify,
+    notify_pipeline_failure,
+    pipeline_failure_webhook_values,
+)
 from .planner import create_plan
 from .runtime import RuntimeContext, variables_from_environment
 from .validation import validate_repository
@@ -118,11 +122,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             result = notify_pipeline_failure(
                 options.application,
                 options.workflow_url,
-                (
-                    os.environ.get("GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK", ""),
-                    os.environ.get("GC_SIGNIN_WEBSITE_OPS_SLACK_ALERT_WEBHOOK", ""),
-                    os.environ.get("CL_DEV_SLACK_ALERT_WEBHOOK", ""),
-                ),
+                pipeline_failure_webhook_values(os.environ),
                 detail=options.detail,
             )
             print(

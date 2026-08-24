@@ -4,12 +4,6 @@ profile: static-site
 
 environments: [dev, test, staging, prod]
 
-notifications:
-  info_webhook:
-    secret: GC_SIGNIN_WEBSITE_OPS_SLACK_INFO_WEBHOOK
-  alert_webhooks:
-    - secret: GC_SIGNIN_WEBSITE_OPS_SLACK_ALERT_WEBHOOK
-
 site:
   environment:
     WEBSITE_ENVIRONMENT: "{environment}"

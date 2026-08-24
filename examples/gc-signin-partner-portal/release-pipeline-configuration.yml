@@ -4,11 +4,6 @@ profile: spa-ecs
 
 environments: [dev]
 
-notifications:
-  alert_webhooks:
-    - secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK
-    - secret: CL_DEV_SLACK_ALERT_WEBHOOK
-
 frontend:
   package_manager: pnpm
   package_manager_version: 9.15.4
