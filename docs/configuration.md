@@ -154,15 +154,18 @@ GitHub Actions **secrets** on each deployment environment:
 
 | Secret | Behavior |
 | --- | --- |
-| `RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK` | Deployment start and success messages. |
+| `RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK` | The single info destination when no numbered info secret is registered. |
+| `RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK_1` through `_5` | Up to five info destinations. If any numbered secret is registered, all non-empty numbered secrets are used in numerical order and the unsuffixed secret is ignored. |
 | `RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK` | The single alert destination when no numbered alert secret is registered. |
 | `RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1` through `_5` | Up to five alert destinations. If any numbered secret is registered, all non-empty numbered secrets are used in numerical order and the unsuffixed secret is ignored. |
 
-Numbered alert slots may be sparse; missing or empty slots are skipped. Secrets
-ending in `_6` or higher are not supported. The same alert convention is used
-for build, SBOM, deployment, and pipeline failures. The reusable workflows map
-these secrets directly to their notification steps, so applications do not
-declare Slack settings in YAML.
+INFO and ALERT use exactly the same resolution structure: a single unsuffixed
+secret for one destination, or numbered `_1` through `_5` secrets for multiple
+destinations. Numbered slots may be sparse; missing or empty slots are skipped.
+Secrets ending in `_6` or higher are not supported. Info messages cover
+deployment start and success. Alert messages cover build, SBOM, deployment, and
+pipeline failures. The reusable workflows map these secrets directly to their
+notification steps, so applications do not declare Slack settings in YAML.
 
 Start and success messages are sent for manifest promotions and manual deployments. Failure messages are sent for promoted/non-dev environments and, by default, dev. Every message names its environment.
 
