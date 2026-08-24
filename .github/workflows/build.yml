@@ -114,7 +114,7 @@ jobs:
         if: inputs.aws-role != ''
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
-          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ inputs.aws-role }}
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ vars[inputs.aws-role] || inputs.aws-role }}
           role-session-name: CanadaLoginReleaseBuild
           aws-region: ${{ inputs.aws-region }}
 
@@ -134,14 +134,6 @@ jobs:
           VITE_GOOGLE_ANALYTICS_ID: ${{ secrets.VITE_GOOGLE_ANALYTICS_ID }}
           FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET: ${{ secrets.FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET }}
           FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-          BUILD_SECRET_1: ${{ secrets.BUILD_SECRET_1 }}
-          BUILD_SECRET_2: ${{ secrets.BUILD_SECRET_2 }}
-          BUILD_SECRET_3: ${{ secrets.BUILD_SECRET_3 }}
-          BUILD_SECRET_4: ${{ secrets.BUILD_SECRET_4 }}
-          BUILD_SECRET_5: ${{ secrets.BUILD_SECRET_5 }}
-          BUILD_SECRET_6: ${{ secrets.BUILD_SECRET_6 }}
-          BUILD_SECRET_7: ${{ secrets.BUILD_SECRET_7 }}
-          BUILD_SECRET_8: ${{ secrets.BUILD_SECRET_8 }}
         run: >-
           canadalogin-release build
           --config "$CONFIG_PATH"
@@ -197,7 +189,7 @@ jobs:
         if: inputs.aws-role != ''
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
-          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ inputs.aws-role }}
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/${{ vars[inputs.aws-role] || inputs.aws-role }}
           role-session-name: CanadaLoginReleaseSbom
           aws-region: ${{ inputs.aws-region }}
 

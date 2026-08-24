@@ -20,6 +20,28 @@ deployments:
 - {name: backend, kind: ecs, aws_role: github_action_push_ecs, repository: {var: ECR_REPOSITORY}, services: [{cluster: {var: ECS_CLUSTER}, service: {var: ECS_SERVICE}, container: {var: ECS_SERVICE}, ssm_parameter: "/ecs/{cluster}/{service}/container-image"}]}
 """
 
+SCHEMA_TWO_CONFIG = """
+schema_version: 2
+application: profile-management
+profile: spa-ecs
+
+environments: [dev, test, staging, prod]
+
+frontend:
+    environment:
+        VITE_BACKEND_API_URL: {var: VITE_BACKEND_API_URL}
+        VITE_ENVIRONMENT: "{environment}"
+    invalidation_paths: [/index.html, /assets/*]
+
+backend:
+    dockerfile: backend/Dockerfile
+    build_args:
+        RELEASE_TAG: "{release_version}"
+
+load_tests:
+    enabled: true
+"""
+
 
 class PipelineConfigTest(unittest.TestCase):
     def load(self, content: str = BASE_CONFIG) -> PipelineConfig:
@@ -51,6 +73,54 @@ class PipelineConfigTest(unittest.TestCase):
             },
         )
         self.assertEqual(config.deployments[1].services[0].container.source, "var")
+
+    def test_loads_schema_two_spa_ecs_profile(self) -> None:
+        config = self.load(SCHEMA_TWO_CONFIG)
+
+        self.assertEqual(config.aws_region, "ca-central-1")
+        self.assertEqual(config.environments.development, "dev")
+        self.assertEqual(config.environments.versioned, ("test", "staging", "prod"))
+        self.assertEqual(
+            [build.name for build in config.builds],
+            ["frontend", "backend", "load-test"],
+        )
+        self.assertEqual(
+            config.deployment_roles("prod"),
+            {"ecs": "RELEASE_ECS_ROLE", "s3": "RELEASE_S3_ROLE"},
+        )
+        backend = config.builds[1]
+        self.assertEqual(backend.docker.context, Path("backend"))
+        self.assertEqual(backend.docker.dockerfile, Path("backend/Dockerfile"))
+        self.assertEqual(config.builds[2].source_environment, "staging")
+        self.assertFalse(config.builds[2].gates_deployment)
+
+    def test_schema_two_rejects_old_context_key(self) -> None:
+        with self.assertRaisesRegex(
+            ConfigError, "backend contains unknown keys: context"
+        ):
+            self.load(
+                SCHEMA_TWO_CONFIG.replace(
+                    "dockerfile: backend/Dockerfile", "context: backend"
+                )
+            )
+
+    def test_schema_two_rejects_numbered_secret_slots(self) -> None:
+        invalid = SCHEMA_TWO_CONFIG.replace(
+            "VITE_BACKEND_API_URL: {var: VITE_BACKEND_API_URL}",
+            "VITE_BACKEND_API_URL: {secret: BUILD_SECRET_1}",
+        )
+
+        with self.assertRaisesRegex(ConfigError, "do not expose"):
+            self.load(invalid)
+
+    def test_schema_two_requires_staging_for_load_tests(self) -> None:
+        invalid = SCHEMA_TWO_CONFIG.replace(
+            "environments: [dev, test, staging, prod]",
+            "environments: [dev, test, prod]",
+        )
+
+        with self.assertRaisesRegex(ConfigError, "requires the staging environment"):
+            self.load(invalid)
 
     def test_rejects_ambiguous_reference(self) -> None:
         with self.assertRaisesRegex(ConfigError, "exactly one of"):

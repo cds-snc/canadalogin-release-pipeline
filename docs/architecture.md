@@ -114,7 +114,7 @@ These controls reduce partial state but do not make the current S3 sync and ECS 
 - Pull requests use `pull_request`, not privileged `pull_request_target`.
 - Configured commands are argv arrays and run with `shell=False`.
 - Secrets are passed individually. They are never serialized into JSON, matching GitHub's warning that structured secret blobs can defeat exact-value redaction.
-- Mapped build and deployment secrets are removed from Git and AWS child-process environments after their configured values are resolved. Caller-defined build and hook commands do not inherit AWS or GitHub credentials. Hook steps receive only `HOOK_SECRET_1` through `HOOK_SECRET_4` in addition to configured variables.
+- Mapped build and deployment secrets are removed from Git and AWS child-process environments after their configured values are resolved. Caller-defined build and hook commands do not inherit AWS or GitHub credentials. Hook steps receive only explicitly mapped named secrets in addition to configured variables.
 - AWS access uses OIDC and environment-specific role names.
 - Jobs receive only the token permissions needed for their role. Ordinary artifact builds use `contents: read`; the isolated SBOM job uses `contents: write` because the pinned SBOM action submits GitHub dependency snapshots.
 - Caller rulesets remain responsible for enforcing review requirements before deployment manifests reach main.

@@ -36,7 +36,6 @@ BUILD_WORKFLOW_SECRETS = frozenset(
         "VITE_API_BASE_URL",
         "VITE_BACKEND_API_URL",
         "VITE_GOOGLE_ANALYTICS_ID",
-        *(f"BUILD_SECRET_{index}" for index in range(1, 9)),
     }
 )
 DEPLOYMENT_WORKFLOW_SECRETS = frozenset(
@@ -45,7 +44,6 @@ DEPLOYMENT_WORKFLOW_SECRETS = frozenset(
         "FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET",
         "FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID",
         "FRONTEND_APP_S3_BUCKET",
-        *(f"DEPLOY_SECRET_{index}" for index in range(1, 9)),
     }
 )
 SUPPORTED_WORKFLOW_SECRETS = frozenset(
@@ -53,9 +51,14 @@ SUPPORTED_WORKFLOW_SECRETS = frozenset(
         *NOTIFICATION_WORKFLOW_SECRETS,
         *BUILD_WORKFLOW_SECRETS,
         *DEPLOYMENT_WORKFLOW_SECRETS,
-        *(f"HOOK_SECRET_{index}" for index in range(1, 5)),
     }
 )
+
+DEFAULT_DEPLOY_ENVIRONMENTS = ("dev", "test", "staging", "prod")
+DEFAULT_NODE_VERSION = "22"
+DEFAULT_PNPM_VERSION = "9.15.4"
+SCHEMA_TWO_S3_ROLE = "RELEASE_S3_ROLE"
+SCHEMA_TWO_ECS_ROLE = "RELEASE_ECS_ROLE"
 
 
 @dataclass(frozen=True)
@@ -262,6 +265,527 @@ class PipelineConfig:
 
 
 def _parse_pipeline(raw: Mapping[str, Any]) -> PipelineConfig:
+    schema_version = raw.get("schema_version")
+    if schema_version == 1:
+        return _parse_pipeline_v1(raw)
+    if schema_version == 2:
+        return _parse_pipeline_v2(raw)
+    raise ConfigError("schema_version must be 1 or 2")
+
+
+def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
+    _reject_unknown(
+        raw,
+        {
+            "schema_version",
+            "application",
+            "profile",
+            "environments",
+            "frontend",
+            "backend",
+            "site",
+            "load_tests",
+            "notifications",
+            "hooks",
+            "events",
+        },
+        "configuration",
+    )
+    application = _required_string(raw, "application", "application")
+    profile = _required_string(raw, "profile", "profile")
+    if profile not in {"ecs-service", "spa-ecs", "static-site"}:
+        raise ConfigError("profile must be 'ecs-service', 'spa-ecs', or 'static-site'")
+
+    deploy = _string_tuple(
+        raw.get("environments", DEFAULT_DEPLOY_ENVIRONMENTS), "environments"
+    )
+    _ensure_unique(deploy, "environments")
+    if "dev" not in deploy:
+        raise ConfigError("environments must include 'dev'")
+    environment_config = EnvironmentConfig(
+        development="dev",
+        deploy=deploy,
+        versioned=tuple(environment for environment in deploy if environment != "dev"),
+    )
+
+    notifications = _parse_v2_notifications(raw)
+    hooks = _parse_hooks(raw.get("hooks", {}))
+    repository_dispatch = _parse_events(raw.get("events", {}), deploy)
+
+    builds: list[BuildConfig] = []
+    deployments: list[DeploymentConfig] = []
+    if profile == "spa-ecs":
+        frontend_build, frontend_deployment = _parse_v2_frontend(raw, deploy)
+        builds.append(frontend_build)
+        deployments.append(frontend_deployment)
+    if profile in {"ecs-service", "spa-ecs"}:
+        backend_build, backend_deployment = _parse_v2_backend(raw, application, deploy)
+        builds.append(backend_build)
+        deployments.append(backend_deployment)
+    if profile == "static-site":
+        site_build, site_deployment = _parse_v2_static_site(raw, deploy)
+        builds.append(site_build)
+        deployments.append(site_deployment)
+
+    load_test = _parse_v2_load_tests(raw, application, deploy)
+    if load_test is not None:
+        builds.append(load_test)
+
+    config = PipelineConfig(
+        application=application,
+        aws_region="ca-central-1",
+        environments=environment_config,
+        release=ReleaseConfig(),
+        notifications=notifications,
+        builds=tuple(builds),
+        deployments=tuple(deployments),
+        hooks=hooks,
+        repository_dispatch=repository_dispatch,
+    )
+    _validate_pipeline_config(config)
+    return config
+
+
+def _parse_v2_notifications(raw: Mapping[str, Any]) -> NotificationConfig:
+    notifications_raw = _optional_mapping(raw, "notifications", "notifications")
+    _reject_unknown(
+        notifications_raw,
+        {"info_webhook", "alert_webhooks", "notify_development_failures"},
+        "notifications",
+    )
+    info_raw = notifications_raw.get(
+        "info_webhook", {"secret": "GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK"}
+    )
+    alert_raw = notifications_raw.get(
+        "alert_webhooks", [{"secret": "GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK"}]
+    )
+    return NotificationConfig(
+        info_webhook=(
+            ValueReference.parse(
+                info_raw,
+                "notifications.info_webhook",
+                INFO_NOTIFICATION_WORKFLOW_SECRETS,
+            )
+            if info_raw is not None
+            else None
+        ),
+        alert_webhooks=tuple(
+            ValueReference.parse(
+                value,
+                f"notifications.alert_webhooks[{index}]",
+                ALERT_NOTIFICATION_WORKFLOW_SECRETS,
+            )
+            for index, value in enumerate(
+                _sequence(alert_raw, "notifications.alert_webhooks")
+            )
+        ),
+        notify_development_failures=_optional_bool(
+            notifications_raw,
+            "notify_development_failures",
+            True,
+            "notifications.notify_development_failures",
+        ),
+    )
+
+
+def _parse_hooks(raw: object) -> HookConfig:
+    hooks_raw = _mapping(raw, "hooks")
+    _reject_unknown(
+        hooks_raw,
+        {"before_deploy", "health_check", "after_deploy", "on_failure"},
+        "hooks",
+    )
+    return HookConfig(
+        before_deploy=_commands(
+            hooks_raw.get("before_deploy", ()), "hooks.before_deploy"
+        ),
+        health_check=_commands(hooks_raw.get("health_check", ()), "hooks.health_check"),
+        after_deploy=_commands(hooks_raw.get("after_deploy", ()), "hooks.after_deploy"),
+        on_failure=_commands(hooks_raw.get("on_failure", ()), "hooks.on_failure"),
+    )
+
+
+def _parse_events(raw: object, deploy: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    events_raw = _mapping(raw, "events")
+    _reject_unknown(events_raw, {"repository_dispatch"}, "events")
+    dispatch_raw = _optional_mapping(
+        events_raw, "repository_dispatch", "events.repository_dispatch"
+    )
+    repository_dispatch = {
+        event: _string_tuple(
+            targets, f"events.repository_dispatch.{event}", allow_empty=True
+        )
+        for event, targets in dispatch_raw.items()
+    }
+    for event, targets in repository_dispatch.items():
+        unknown_targets = set(targets) - set(deploy)
+        if unknown_targets:
+            raise ConfigError(
+                f"events.repository_dispatch.{event} contains undeployable "
+                "environments: " + ", ".join(sorted(unknown_targets))
+            )
+    return repository_dispatch
+
+
+def _parse_v2_environment(raw: object, location: str) -> Mapping[str, ValueReference]:
+    environment_raw = _mapping(raw, location)
+    return {
+        key: ValueReference.parse(value, f"{location}.{key}", BUILD_WORKFLOW_SECRETS)
+        for key, value in environment_raw.items()
+    }
+
+
+def _contract_reference(name: str) -> ValueReference:
+    return ValueReference(source="var", value=name)
+
+
+def _service_variable_name(service: str, suffix: str, location: str) -> str:
+    normalized = _string(service, location).replace("-", "_").upper()
+    if not normalized.replace("_", "").isalnum():
+        raise ConfigError(f"{location} must contain only letters, numbers, or hyphens")
+    if normalized == "BACKEND":
+        return f"RELEASE_ECS_{suffix}"
+    return f"RELEASE_ECS_{normalized}_{suffix}"
+
+
+def _parse_v2_backend(
+    raw: Mapping[str, Any], application: str, deploy: tuple[str, ...]
+) -> tuple[BuildConfig, DeploymentConfig]:
+    backend_raw = _required_mapping(raw, "backend", "backend")
+    _reject_unknown(backend_raw, {"dockerfile", "build_args", "services"}, "backend")
+    dockerfile = Path(_required_string(backend_raw, "dockerfile", "backend.dockerfile"))
+    build_args_raw = _optional_mapping(backend_raw, "build_args", "backend.build_args")
+    build_args = {
+        key: _string(value, f"backend.build_args.{key}")
+        for key, value in build_args_raw.items()
+    }
+    service_names = _string_tuple(
+        backend_raw.get("services", ("backend",)), "backend.services"
+    )
+    _ensure_unique(service_names, "backend.services")
+    services = tuple(
+        EcsServiceConfig(
+            cluster=_contract_reference(
+                _service_variable_name(service, "CLUSTER", f"backend.services[{index}]")
+            ),
+            service=_contract_reference(
+                _service_variable_name(service, "SERVICE", f"backend.services[{index}]")
+            ),
+            container=_contract_reference(
+                _service_variable_name(
+                    service, "CONTAINER", f"backend.services[{index}]"
+                )
+            ),
+            ssm_parameter="/ecs/{cluster}/{service}/container-image",
+        )
+        for index, service in enumerate(service_names)
+    )
+    return (
+        BuildConfig(
+            name="backend",
+            kind="docker",
+            environments=("dev",),
+            aws_role=SCHEMA_TWO_ECS_ROLE,
+            dns_audit=True,
+            shared_artifact=True,
+            docker=DockerBuildConfig(
+                context=dockerfile.parent,
+                dockerfile=dockerfile,
+                repository=_contract_reference("RELEASE_ECR_REPOSITORY"),
+                tags=("sha", "latest", "release"),
+                build_args=build_args,
+            ),
+            sbom=SbomConfig(
+                name=f"{application}-backend",
+                dockerfile=dockerfile,
+            ),
+        ),
+        DeploymentConfig(
+            name="backend",
+            kind="ecs",
+            environments=deploy,
+            aws_role=SCHEMA_TWO_ECS_ROLE,
+            repository=_contract_reference("RELEASE_ECR_REPOSITORY"),
+            services=services,
+        ),
+    )
+
+
+def _parse_v2_frontend(
+    raw: Mapping[str, Any], deploy: tuple[str, ...]
+) -> tuple[BuildConfig, DeploymentConfig]:
+    frontend_raw = _required_mapping(raw, "frontend", "frontend")
+    _reject_unknown(
+        frontend_raw,
+        {
+            "directory",
+            "output",
+            "package_manager",
+            "package_manager_version",
+            "environment",
+            "invalidation_paths",
+            "delete_stale_files",
+        },
+        "frontend",
+    )
+    directory = Path(
+        _optional_string(frontend_raw, "directory", "frontend", "frontend.directory")
+    )
+    output = _optional_string(frontend_raw, "output", "dist", "frontend.output")
+    package_manager = _optional_string(
+        frontend_raw, "package_manager", "npm", "frontend.package_manager"
+    )
+    if package_manager not in {"npm", "pnpm"}:
+        raise ConfigError("frontend.package_manager must be 'npm' or 'pnpm'")
+    package_manager_version = _optional_string(
+        frontend_raw,
+        "package_manager_version",
+        DEFAULT_PNPM_VERSION,
+        "frontend.package_manager_version",
+    )
+    environment = _parse_v2_environment(
+        frontend_raw.get("environment", {}), "frontend.environment"
+    )
+    delete_stale_files = _optional_bool(
+        frontend_raw,
+        "delete_stale_files",
+        False,
+        "frontend.delete_stale_files",
+    )
+    invalidation_paths = _string_tuple(
+        frontend_raw.get("invalidation_paths", ("/index.html",)),
+        "frontend.invalidation_paths",
+        allow_empty=True,
+    )
+    if package_manager == "npm":
+        working_directory = directory
+        commands = (("npm", "ci"), ("npm", "run", "build"))
+    else:
+        working_directory = Path(".")
+        commands = (
+            ("corepack", "enable"),
+            (
+                "corepack",
+                "prepare",
+                f"pnpm@{package_manager_version}",
+                "--activate",
+            ),
+            (
+                "pnpm",
+                "--dir",
+                str(directory),
+                "--ignore-workspace",
+                "install",
+                "--frozen-lockfile",
+            ),
+            (
+                "pnpm",
+                "--dir",
+                str(directory),
+                "--ignore-workspace",
+                "build",
+            ),
+        )
+    return (
+        BuildConfig(
+            name="frontend",
+            kind="command",
+            environments=deploy,
+            aws_role=SCHEMA_TWO_S3_ROLE,
+            node_version=DEFAULT_NODE_VERSION,
+            working_directory=working_directory,
+            commands=commands,
+            environment=environment,
+            s3_artifact=S3ArtifactConfig(
+                source=directory / output,
+                bucket=_contract_reference("RELEASE_FRONTEND_ARTIFACT_BUCKET"),
+                delete=delete_stale_files,
+                skip_if_exists_non_development=True,
+            ),
+        ),
+        DeploymentConfig(
+            name="frontend",
+            kind="s3",
+            environments=deploy,
+            aws_role=SCHEMA_TWO_S3_ROLE,
+            artifact_bucket=_contract_reference("RELEASE_FRONTEND_ARTIFACT_BUCKET"),
+            targets=(
+                S3TargetConfig(
+                    bucket=_contract_reference("RELEASE_FRONTEND_BUCKET"),
+                    delete=delete_stale_files,
+                ),
+            ),
+            invalidations=(
+                CloudFrontInvalidationConfig(
+                    distribution=_contract_reference(
+                        "RELEASE_FRONTEND_DISTRIBUTION_ID"
+                    ),
+                    paths=invalidation_paths,
+                ),
+            )
+            if invalidation_paths
+            else (),
+        ),
+    )
+
+
+def _parse_v2_static_site(
+    raw: Mapping[str, Any], deploy: tuple[str, ...]
+) -> tuple[BuildConfig, DeploymentConfig]:
+    site_raw = _required_mapping(raw, "site", "site")
+    _reject_unknown(
+        site_raw,
+        {"directory", "output", "environment", "targets"},
+        "site",
+    )
+    directory = Path(
+        _optional_string(site_raw, "directory", "website", "site.directory")
+    )
+    output = _optional_string(site_raw, "output", "_site", "site.output")
+    environment = _parse_v2_environment(
+        site_raw.get("environment", {}), "site.environment"
+    )
+    targets_raw = _required_mapping(site_raw, "targets", "site.targets")
+    if not targets_raw:
+        raise ConfigError("site.targets must not be empty")
+    targets: list[S3TargetConfig] = []
+    invalidations: list[CloudFrontInvalidationConfig] = []
+    for target_name, target_value in targets_raw.items():
+        target_location = f"site.targets.{target_name}"
+        target = _strict_mapping(
+            target_value,
+            target_location,
+            {"delete_stale_files", "invalidation_paths"},
+        )
+        normalized_name = (
+            _string(target_name, target_location).replace("-", "_").upper()
+        )
+        if not normalized_name.replace("_", "").isalnum():
+            raise ConfigError(
+                f"{target_location} must contain only letters, numbers, or hyphens"
+            )
+        delete_stale_files = _optional_bool(
+            target,
+            "delete_stale_files",
+            True,
+            f"{target_location}.delete_stale_files",
+        )
+        paths = _string_tuple(
+            target.get("invalidation_paths", ("/*",)),
+            f"{target_location}.invalidation_paths",
+            allow_empty=True,
+        )
+        targets.append(
+            S3TargetConfig(
+                bucket=_contract_reference(f"RELEASE_SITE_{normalized_name}_BUCKET"),
+                delete=delete_stale_files,
+            )
+        )
+        if paths:
+            invalidations.append(
+                CloudFrontInvalidationConfig(
+                    distribution=_contract_reference(
+                        f"RELEASE_SITE_{normalized_name}_DISTRIBUTION_ID"
+                    ),
+                    paths=paths,
+                )
+            )
+    return (
+        BuildConfig(
+            name="website",
+            kind="command",
+            environments=deploy,
+            aws_role=SCHEMA_TWO_S3_ROLE,
+            node_version=DEFAULT_NODE_VERSION,
+            working_directory=directory,
+            commands=(("npm", "ci"), ("npm", "run", "build")),
+            environment=environment,
+            s3_artifact=S3ArtifactConfig(
+                source=directory / output,
+                bucket=_contract_reference("RELEASE_STATIC_ARTIFACT_BUCKET"),
+                delete=True,
+                skip_if_exists_non_development=True,
+            ),
+        ),
+        DeploymentConfig(
+            name="website",
+            kind="s3",
+            environments=deploy,
+            aws_role=SCHEMA_TWO_S3_ROLE,
+            artifact_bucket=_contract_reference("RELEASE_STATIC_ARTIFACT_BUCKET"),
+            targets=tuple(targets),
+            invalidations=tuple(invalidations),
+        ),
+    )
+
+
+def _parse_v2_load_tests(
+    raw: Mapping[str, Any], application: str, deploy: tuple[str, ...]
+) -> BuildConfig | None:
+    if "load_tests" not in raw:
+        return None
+    load_tests_raw = raw["load_tests"]
+    if isinstance(load_tests_raw, bool):
+        enabled = load_tests_raw
+        value: Mapping[str, Any] = {}
+    else:
+        value = _strict_mapping(load_tests_raw, "load_tests", {"enabled", "dockerfile"})
+        enabled = _optional_bool(value, "enabled", True, "load_tests.enabled")
+    if not enabled:
+        return None
+    if "staging" not in deploy:
+        raise ConfigError("load_tests requires the staging environment")
+    dockerfile = Path(
+        _optional_string(
+            value, "dockerfile", "load_tests/Dockerfile", "load_tests.dockerfile"
+        )
+    )
+    return BuildConfig(
+        name="load-test",
+        kind="docker",
+        environments=("staging",),
+        aws_role=SCHEMA_TWO_ECS_ROLE,
+        source_environment="staging",
+        gates_deployment=False,
+        docker=DockerBuildConfig(
+            context=dockerfile.parent,
+            dockerfile=dockerfile,
+            repository=_contract_reference("RELEASE_LOAD_TEST_ECR_REPOSITORY"),
+            tags=("sha", "latest"),
+        ),
+        sbom=SbomConfig(
+            name=f"{application}-load-test",
+            dockerfile=dockerfile,
+        ),
+    )
+
+
+def _validate_pipeline_config(config: PipelineConfig) -> None:
+    _ensure_unique((build.name for build in config.builds), "build names")
+    _ensure_unique(
+        (deployment.name for deployment in config.deployments), "deployment names"
+    )
+    deployable_environments = set(config.environments.deploy)
+    for index, build in enumerate(config.builds):
+        unknown_build_environments = set(build.environments) - deployable_environments
+        if unknown_build_environments:
+            raise ConfigError(
+                f"builds[{index}].environments contains undeployable environments: "
+                + ", ".join(sorted(unknown_build_environments))
+            )
+        if (
+            build.source_environment
+            and build.source_environment not in deployable_environments
+        ):
+            raise ConfigError(
+                f"builds[{index}].source_environment "
+                f"{build.source_environment!r} is not deployable"
+            )
+    for environment in config.environments.deploy:
+        config.deployment_roles(environment)
+
+
+def _parse_pipeline_v1(raw: Mapping[str, Any]) -> PipelineConfig:
     _reject_unknown(
         raw,
         {

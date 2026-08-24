@@ -1,101 +1,37 @@
-schema_version: 1
-application: GC Sign-In Partner Portal
-aws_region: ca-central-1
+schema_version: 2
+application: partner-portal
+profile: spa-ecs
 
-environments:
-  development: dev
-  deploy: [dev]
-  versioned: [test, staging, prod]
+environments: [dev]
 
 notifications:
-  info_webhook:
-    secret: GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK
   alert_webhooks:
     - secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK
     - secret: CL_DEV_SLACK_ALERT_WEBHOOK
 
-builds:
-  - name: backend
-    kind: docker
-    environments: [dev]
-    aws_role: github_action_manage_push_ecr_ecs-partner-portal
-    dns_audit: true
-    shared_artifact: true
-    docker:
-      context: backend
-      dockerfile: backend/Dockerfile
-      repository:
-        var: ARTIFACT_ECR_REPOSITORY
-      tags: [sha, latest, release]
-      build_args:
-        APP_VERSION: "{release_version}"
-    sbom:
-      name: gc-signin-dev-partner-portal-backend-api
-      dockerfile: backend/Dockerfile
-  - name: frontend
-    kind: command
-    environments: [dev]
-    aws_role: github_action_push_S3-partner-portal
-    node_version: "22"
-    command:
-      working_directory: .
-      steps:
-        - [corepack, enable]
-        - [corepack, prepare, pnpm@9.15.4, --activate]
-        - [pnpm, --dir, frontend, --ignore-workspace, install, --frozen-lockfile]
-        - [pnpm, --dir, frontend, --ignore-workspace, build]
-      environment:
-        VITE_API_BASE_URL:
-          secret: VITE_API_BASE_URL
-        VITE_APP_ENVIRONMENT:
-          var: VITE_APP_ENVIRONMENT
-        VITE_AUTH_POST_LOGIN_PATH:
-          var: VITE_AUTH_POST_LOGIN_PATH
-          default: /your-applications
-        VITE_SESSION_WARNING_AFTER_MINUTES:
-          var: VITE_SESSION_WARNING_AFTER_MINUTES
-          default: "25"
-        VITE_SESSION_COUNTDOWN_MINUTES:
-          var: VITE_SESSION_COUNTDOWN_MINUTES
-          default: "5"
-        VITE_RELEASE_TAG: "{release_version}"
-    s3_artifact:
-      source: frontend/dist
-      bucket:
-        secret: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET
-      delete: true
+frontend:
+  package_manager: pnpm
+  package_manager_version: 9.15.4
+  environment:
+    VITE_API_BASE_URL:
+      var: VITE_API_BASE_URL
+    VITE_APP_ENVIRONMENT:
+      var: VITE_APP_ENVIRONMENT
+    VITE_AUTH_POST_LOGIN_PATH:
+      var: VITE_AUTH_POST_LOGIN_PATH
+      default: /your-applications
+    VITE_SESSION_WARNING_AFTER_MINUTES:
+      var: VITE_SESSION_WARNING_AFTER_MINUTES
+      default: "25"
+    VITE_SESSION_COUNTDOWN_MINUTES:
+      var: VITE_SESSION_COUNTDOWN_MINUTES
+      default: "5"
+    VITE_RELEASE_TAG: "{release_version}"
+  delete_stale_files: true
+  invalidation_paths: [/index.html, /assets/*, /locales/*]
 
-deployments:
-  - name: frontend
-    kind: s3
-    aws_role: github_action_push_S3-partner-portal
-    artifact_bucket:
-      secret: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET
-    targets:
-      - bucket:
-          secret: FRONTEND_APP_S3_BUCKET
-        delete: true
-    invalidations:
-      - distribution:
-          secret: CLOUDFRONT_DISTRIBUTION_ID
-        paths: [/index.html, /assets/*, /locales/*]
-  - name: backend
-    kind: ecs
-    aws_role: github_action_manage_push_ecr_ecs-partner-portal
-    repository:
-      var: ARTIFACT_ECR_REPOSITORY
-    services:
-      - cluster:
-          var: ECS_WEB_CLUSTER
-        service:
-          var: ECS_WEB_SERVICE
-        container:
-          var: ECS_WEB_CONTAINER
-        ssm_parameter: /ecs/{cluster}/{service}/container-image
-      - cluster:
-          var: ECS_WORKER_CLUSTER
-        service:
-          var: ECS_WORKER_SERVICE
-        container:
-          var: ECS_WORKER_CONTAINER
-        ssm_parameter: /ecs/{cluster}/{service}/container-image
+backend:
+  dockerfile: backend/Dockerfile
+  build_args:
+    APP_VERSION: "{release_version}"
+  services: [web, worker]
