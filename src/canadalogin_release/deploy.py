@@ -257,7 +257,11 @@ def _wait_for_service_stability(
                 diagnostics = "describe-services returned invalid JSON"
             if isinstance(document, Mapping):
                 diagnostics = _ecs_service_diagnostics(document)
-                if _ecs_rollout_failed(document):
+                if _ecs_rollout_failed(
+                    document,
+                    expected_task_definition_arn=expected_task_definition_arn,
+                    previous_deployment_id=previous_deployment_id,
+                ):
                     raise ConfigError(
                         f"ECS service {state.cluster}/{state.service} reported a "
                         f"failed rollout: {diagnostics}"
@@ -317,7 +321,12 @@ def _ecs_service_is_stable(
     )
 
 
-def _ecs_rollout_failed(document: Mapping[str, Any]) -> bool:
+def _ecs_rollout_failed(
+    document: Mapping[str, Any],
+    *,
+    expected_task_definition_arn: str | None = None,
+    previous_deployment_id: str | None = None,
+) -> bool:
     services = document.get("services", [])
     if not isinstance(services, list) or len(services) != 1:
         return bool(document.get("failures"))
@@ -328,7 +337,16 @@ def _ecs_rollout_failed(document: Mapping[str, Any]) -> bool:
     if not isinstance(deployments, list):
         return False
     return any(
-        isinstance(deployment, Mapping) and deployment.get("rolloutState") == "FAILED"
+        isinstance(deployment, Mapping)
+        and deployment.get("rolloutState") == "FAILED"
+        and (
+            expected_task_definition_arn is None
+            or deployment.get("taskDefinition") == expected_task_definition_arn
+        )
+        and (
+            previous_deployment_id is None
+            or deployment.get("id") != previous_deployment_id
+        )
         for deployment in deployments
     )
 

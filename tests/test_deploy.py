@@ -9,7 +9,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig
-from canadalogin_release.deploy import _ecs_service_is_stable, deploy_ecs, deploy_s3
+from canadalogin_release.deploy import (
+    _ecs_rollout_failed,
+    _ecs_service_is_stable,
+    deploy_ecs,
+    deploy_s3,
+)
 from canadalogin_release.runtime import RuntimeContext
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
@@ -470,6 +475,7 @@ class DeployTest(unittest.TestCase):
                         "pendingCount": 0,
                         "deployments": [
                             {
+                                "taskDefinition": "task:2",
                                 "status": "PRIMARY",
                                 "rolloutState": "FAILED",
                                 "rolloutStateReason": "deployment circuit breaker",
@@ -510,6 +516,36 @@ class DeployTest(unittest.TestCase):
 
         self.assertFalse(
             any(command[1:3] == ("ssm", "put-parameter") for command in runner.commands)
+        )
+
+    def test_ecs_rollout_failure_ignores_previous_failed_deployment(self) -> None:
+        document = {
+            "services": [
+                {
+                    "deployments": [
+                        {
+                            "id": "deployment-new",
+                            "status": "PRIMARY",
+                            "taskDefinition": "task:new",
+                            "rolloutState": "IN_PROGRESS",
+                        },
+                        {
+                            "id": "deployment-old",
+                            "status": "ACTIVE",
+                            "taskDefinition": "task:old",
+                            "rolloutState": "FAILED",
+                        },
+                    ]
+                }
+            ],
+            "failures": [],
+        }
+
+        self.assertFalse(
+            _ecs_rollout_failed(
+                document,
+                expected_task_definition_arn="task:new",
+            )
         )
 
     def test_ecs_stability_rejects_stale_or_competing_deployment(self) -> None:
