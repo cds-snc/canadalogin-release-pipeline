@@ -9,7 +9,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig
-from canadalogin_release.deploy import _ecs_service_is_stable, deploy_ecs, deploy_s3
+from canadalogin_release.deploy import (
+    _ecs_rollout_failed,
+    _ecs_service_is_stable,
+    deploy_ecs,
+    deploy_s3,
+)
 from canadalogin_release.runtime import RuntimeContext
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
@@ -107,18 +112,18 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "builds",
-                "EN_S3_BUCKET": "english",
-                "FR_S3_BUCKET": "french",
-                "EN_CLOUDFRONT_DISTRIBUTION_ID": "EN123",
-                "FR_CLOUDFRONT_DISTRIBUTION_ID": "FR123",
+                "RELEASE_STATIC_ARTIFACT_BUCKET": "builds",
+                "RELEASE_SITE_EN_BUCKET": "english",
+                "RELEASE_SITE_FR_BUCKET": "french",
+                "RELEASE_SITE_EN_DISTRIBUTION_ID": "EN123",
+                "RELEASE_SITE_FR_DISTRIBUTION_ID": "FR123",
             },
         )
 
         result = deploy_s3(config, context, runner=runner)
 
         self.assertEqual(runner.commands[0], ("aws", "s3", "ls", "s3://builds/abc123/"))
-        self.assertIn("DEPLOY_SECRET_1", runner.unset_environments[0])
+        self.assertNotIn("DEPLOY_SECRET_1", runner.unset_environments[0])
         self.assertEqual(
             runner.commands[5],
             ("aws", "s3", "sync", "s3://builds/abc123", "s3://english", "--delete"),
@@ -140,14 +145,14 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "builds",
-                "EN_S3_BUCKET": "english",
-                "EN_CLOUDFRONT_DISTRIBUTION_ID": "EN123",
-                "FR_CLOUDFRONT_DISTRIBUTION_ID": "FR123",
+                "RELEASE_STATIC_ARTIFACT_BUCKET": "builds",
+                "RELEASE_SITE_EN_BUCKET": "english",
+                "RELEASE_SITE_EN_DISTRIBUTION_ID": "EN123",
+                "RELEASE_SITE_FR_DISTRIBUTION_ID": "FR123",
             },
         )
 
-        with self.assertRaisesRegex(ConfigError, "FR_S3_BUCKET"):
+        with self.assertRaisesRegex(ConfigError, "RELEASE_SITE_FR_BUCKET"):
             deploy_s3(config, context, runner=runner)
 
         self.assertFalse(
@@ -168,11 +173,11 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "builds",
-                "EN_S3_BUCKET": "english",
-                "FR_S3_BUCKET": "french",
-                "EN_CLOUDFRONT_DISTRIBUTION_ID": "EN123",
-                "FR_CLOUDFRONT_DISTRIBUTION_ID": "FR123",
+                "RELEASE_STATIC_ARTIFACT_BUCKET": "builds",
+                "RELEASE_SITE_EN_BUCKET": "english",
+                "RELEASE_SITE_FR_BUCKET": "french",
+                "RELEASE_SITE_EN_DISTRIBUTION_ID": "EN123",
+                "RELEASE_SITE_FR_DISTRIBUTION_ID": "FR123",
             },
         )
 
@@ -191,11 +196,11 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "builds",
-                "EN_S3_BUCKET": "english",
-                "FR_S3_BUCKET": "french",
-                "EN_CLOUDFRONT_DISTRIBUTION_ID": "EN123",
-                "FR_CLOUDFRONT_DISTRIBUTION_ID": "FR123",
+                "RELEASE_STATIC_ARTIFACT_BUCKET": "builds",
+                "RELEASE_SITE_EN_BUCKET": "english",
+                "RELEASE_SITE_FR_BUCKET": "french",
+                "RELEASE_SITE_EN_DISTRIBUTION_ID": "EN123",
+                "RELEASE_SITE_FR_DISTRIBUTION_ID": "FR123",
             },
         )
 
@@ -210,11 +215,11 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "builds",
-                "EN_S3_BUCKET": "english",
-                "FR_S3_BUCKET": "french",
-                "EN_CLOUDFRONT_DISTRIBUTION_ID": "EN123",
-                "FR_CLOUDFRONT_DISTRIBUTION_ID": "FR123",
+                "RELEASE_STATIC_ARTIFACT_BUCKET": "builds",
+                "RELEASE_SITE_EN_BUCKET": "english",
+                "RELEASE_SITE_FR_BUCKET": "french",
+                "RELEASE_SITE_EN_DISTRIBUTION_ID": "EN123",
+                "RELEASE_SITE_FR_DISTRIBUTION_ID": "FR123",
             },
         )
 
@@ -245,9 +250,10 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
-                "ECS_CLUSTER": "cluster",
-                "ECS_SERVICE": "service",
+                "RELEASE_ECR_REPOSITORY": "example.ecr/app",
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
             },
         )
 
@@ -286,9 +292,10 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": repository,
-                "ECS_CLUSTER": "cluster",
-                "ECS_SERVICE": "service",
+                "RELEASE_ECR_REPOSITORY": repository,
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
             },
         )
 
@@ -305,9 +312,10 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
-                "ECS_CLUSTER": "cluster",
-                "ECS_SERVICE": "service",
+                "RELEASE_ECR_REPOSITORY": "example.ecr/app",
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
             },
         )
 
@@ -342,9 +350,10 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
-                "ECS_CLUSTER": "cluster",
-                "ECS_SERVICE": "service",
+                "RELEASE_ECR_REPOSITORY": "example.ecr/app",
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
             },
         )
 
@@ -408,9 +417,10 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": repository,
-                "ECS_CLUSTER": "cluster",
-                "ECS_SERVICE": "service",
+                "RELEASE_ECR_REPOSITORY": repository,
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
             },
         )
 
@@ -465,6 +475,7 @@ class DeployTest(unittest.TestCase):
                         "pendingCount": 0,
                         "deployments": [
                             {
+                                "taskDefinition": "task:2",
                                 "status": "PRIMARY",
                                 "rolloutState": "FAILED",
                                 "rolloutStateReason": "deployment circuit breaker",
@@ -490,9 +501,10 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
-                "ECS_CLUSTER": "cluster",
-                "ECS_SERVICE": "service",
+                "RELEASE_ECR_REPOSITORY": "example.ecr/app",
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
             },
         )
 
@@ -504,6 +516,36 @@ class DeployTest(unittest.TestCase):
 
         self.assertFalse(
             any(command[1:3] == ("ssm", "put-parameter") for command in runner.commands)
+        )
+
+    def test_ecs_rollout_failure_ignores_previous_failed_deployment(self) -> None:
+        document = {
+            "services": [
+                {
+                    "deployments": [
+                        {
+                            "id": "deployment-new",
+                            "status": "PRIMARY",
+                            "taskDefinition": "task:new",
+                            "rolloutState": "IN_PROGRESS",
+                        },
+                        {
+                            "id": "deployment-old",
+                            "status": "ACTIVE",
+                            "taskDefinition": "task:old",
+                            "rolloutState": "FAILED",
+                        },
+                    ]
+                }
+            ],
+            "failures": [],
+        }
+
+        self.assertFalse(
+            _ecs_rollout_failed(
+                document,
+                expected_task_definition_arn="task:new",
+            )
         )
 
     def test_ecs_stability_rejects_stale_or_competing_deployment(self) -> None:
@@ -591,9 +633,10 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
-                "ECS_CLUSTER": "cluster",
-                "ECS_SERVICE": "service",
+                "RELEASE_ECR_REPOSITORY": "example.ecr/app",
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
             },
         )
 
@@ -646,9 +689,10 @@ class DeployTest(unittest.TestCase):
         context = self.context(
             Path("."),
             {
-                "ARTIFACT_ECR_REPOSITORY": "example.ecr/app",
-                "ECS_CLUSTER": "cluster",
-                "ECS_SERVICE": "service",
+                "RELEASE_ECR_REPOSITORY": "example.ecr/app",
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
             },
         )
 

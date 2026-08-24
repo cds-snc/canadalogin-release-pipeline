@@ -77,11 +77,9 @@ class BuildTest(unittest.TestCase):
                     repository,
                     "dev",
                     variables={
-                        "VITE_APP_ENVIRONMENT": "development",
-                    },
-                    secrets={
                         "VITE_API_BASE_URL": "https://api.example",
-                        "FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET": "build-bucket",
+                        "VITE_APP_ENVIRONMENT": "development",
+                        "RELEASE_FRONTEND_ARTIFACT_BUCKET": "build-bucket",
                     },
                 ),
                 runner=runner,
@@ -97,7 +95,7 @@ class BuildTest(unittest.TestCase):
             command_environment["VITE_AUTH_POST_LOGIN_PATH"], "/your-applications"
         )
         self.assertEqual(command_environment["VITE_RELEASE_TAG"], "v1.2.3")
-        self.assertIn("BUILD_SECRET_1", runner.unset_environments[0])
+        self.assertNotIn("BUILD_SECRET_1", runner.unset_environments[0])
         self.assertEqual(runner.commands[-1][0][-1], "--delete")
         self.assertIn("AWS_ACCESS_KEY_ID", runner.unset_environments[0])
         self.assertIn("GITHUB_TOKEN", runner.unset_environments[0])
@@ -112,7 +110,7 @@ class BuildTest(unittest.TestCase):
                 context=self.context(
                     Path(directory),
                     "dev",
-                    variables={"ARTIFACT_ECR_REPOSITORY": "example.dkr/repository"},
+                    variables={"RELEASE_ECR_REPOSITORY": "example.dkr/repository"},
                 ),
                 runner=runner,
             )
@@ -140,7 +138,9 @@ class BuildTest(unittest.TestCase):
                     Path(directory),
                     "staging",
                     release_tag=None,
-                    variables={"LOAD_TEST_ECR_REPOSITORY": "example.dkr/load-test"},
+                    variables={
+                        "RELEASE_LOAD_TEST_ECR_REPOSITORY": "example.dkr/load-test"
+                    },
                 ),
                 source_sha="staging-sha",
                 runner=runner,
@@ -170,7 +170,7 @@ class BuildTest(unittest.TestCase):
                     "staging",
                     variables={
                         "GOOGLE_ANALYTICS_ID": "G-123",
-                        "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "build-bucket",
+                        "RELEASE_STATIC_ARTIFACT_BUCKET": "build-bucket",
                     },
                 ),
                 runner=runner,
@@ -195,7 +195,7 @@ class BuildTest(unittest.TestCase):
                     "staging",
                     variables={
                         "GOOGLE_ANALYTICS_ID": "G-123",
-                        "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "build-bucket",
+                        "RELEASE_STATIC_ARTIFACT_BUCKET": "build-bucket",
                     },
                 ),
                 runner=runner,
@@ -222,7 +222,7 @@ class BuildTest(unittest.TestCase):
                         release_tag=None,
                         variables={
                             "GOOGLE_ANALYTICS_ID": "G-123",
-                            "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "build-bucket",
+                            "RELEASE_STATIC_ARTIFACT_BUCKET": "build-bucket",
                         },
                     ),
                     runner=runner,
@@ -244,7 +244,7 @@ class BuildTest(unittest.TestCase):
                     "dev",
                     variables={
                         "GOOGLE_ANALYTICS_ID": "G-123",
-                        "STATIC_WEBSITE_BUILD_ARTIFACTS_S3_BUCKET": "build-bucket",
+                        "RELEASE_STATIC_ARTIFACT_BUCKET": "build-bucket",
                     },
                 ),
                 runner=runner,
@@ -292,7 +292,7 @@ class BuildTest(unittest.TestCase):
                     Path(directory),
                     "dev",
                     variables={
-                        "ARTIFACT_ECR_REPOSITORY": (
+                        "RELEASE_ECR_REPOSITORY": (
                             "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
                         )
                     },
@@ -334,7 +334,7 @@ class BuildTest(unittest.TestCase):
                     Path(directory),
                     "dev",
                     variables={
-                        "ARTIFACT_ECR_REPOSITORY": (
+                        "RELEASE_ECR_REPOSITORY": (
                             "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
                         )
                     },
@@ -379,7 +379,7 @@ class BuildTest(unittest.TestCase):
                     Path(directory),
                     "dev",
                     variables={
-                        "ARTIFACT_ECR_REPOSITORY": (
+                        "RELEASE_ECR_REPOSITORY": (
                             "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
                         )
                     },
@@ -423,7 +423,7 @@ class BuildTest(unittest.TestCase):
                     Path(directory),
                     "dev",
                     variables={
-                        "ARTIFACT_ECR_REPOSITORY": (
+                        "RELEASE_ECR_REPOSITORY": (
                             "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
                         )
                     },

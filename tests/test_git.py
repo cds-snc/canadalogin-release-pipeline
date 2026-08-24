@@ -70,11 +70,11 @@ class GitTest(unittest.TestCase):
             captured = repository / "captured-secret.txt"
             hook = repository / ".git" / "hooks" / "post-checkout"
             hook.write_text(
-                f"#!/bin/sh\nprintf '%s' \"${{BUILD_SECRET_1-unset}}\" > {captured}\n"
+                f"#!/bin/sh\nprintf '%s' \"${{VITE_BACKEND_API_URL-unset}}\" > {captured}\n"
             )
             hook.chmod(0o755)
 
-            with patch.dict(os.environ, {"BUILD_SECRET_1": "sensitive"}):
+            with patch.dict(os.environ, {"VITE_BACKEND_API_URL": "sensitive"}):
                 run_git(["checkout", "-b", "other"], repository)
 
             value = captured.read_text()

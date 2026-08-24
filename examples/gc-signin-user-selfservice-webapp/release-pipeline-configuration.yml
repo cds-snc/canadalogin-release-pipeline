@@ -1,97 +1,31 @@
-schema_version: 1
-application: GC Sign-In Manage Application
-aws_region: ca-central-1
+schema_version: 2
+application: profile-management
+profile: spa-ecs
 
-environments:
-  development: dev
-  deploy: [dev, test, staging, prod]
-  versioned: [test, staging, prod]
+environments: [dev, test, staging, prod]
 
 notifications:
-  info_webhook:
-    secret: GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK
   alert_webhooks:
     - secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK
     - secret: CL_DEV_SLACK_ALERT_WEBHOOK
 
-builds:
-  - name: frontend
-    kind: command
-    environments: [dev, test, staging, prod]
-    aws_role: github_action_push_S3
-    node_version: latest
-    command:
-      working_directory: frontend
-      steps:
-        - [npm, install]
-        - [npm, run, build]
-      environment:
-        VITE_BACKEND_API_URL:
-          secret: VITE_BACKEND_API_URL
-        VITE_GOOGLE_ANALYTICS_ID:
-          secret: VITE_GOOGLE_ANALYTICS_ID
-        VITE_ENVIRONMENT: "{environment}"
-        VITE_RELEASE_TAG: "{release_version}"
-    s3_artifact:
-      source: frontend/dist
-      bucket:
-        secret: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET
-  - name: backend
-    kind: docker
-    environments: [dev]
-    aws_role: github_action_manage_push_ecr_ecs
-    dns_audit: true
-    shared_artifact: true
-    docker:
-      context: backend
-      dockerfile: backend/Dockerfile
-      repository:
-        var: ARTIFACT_ECR_REPOSITORY
-      tags: [sha, latest, release]
-      build_args:
-        RELEASE_TAG: "{release_version}"
-        BUILD_TIMESTAMP: "{build_timestamp}"
-        ECR_REPOSITORY: "{repository}:{sha}"
-        GITHUB_REF: "{github_ref}"
-    sbom:
-      name: gc-signin-dev-backend-api
-      dockerfile: backend/Dockerfile
-  - name: load-test
-    kind: docker
-    environments: [staging]
-    aws_role: github_action_manage_push_ecr_ecs
-    source_environment: staging
-    gates_deployment: false
-    docker:
-      context: load_tests
-      dockerfile: load_tests/Dockerfile
-      repository:
-        var: LOAD_TEST_ECR_REPOSITORY
-      tags: [latest]
+frontend:
+  environment:
+    VITE_BACKEND_API_URL:
+      var: VITE_BACKEND_API_URL
+    VITE_GOOGLE_ANALYTICS_ID:
+      var: VITE_GOOGLE_ANALYTICS_ID
+    VITE_ENVIRONMENT: "{environment}"
+    VITE_RELEASE_TAG: "{release_version}"
+  invalidation_paths: [/index.html, /assets/*, /mockServiceWorker.js]
 
-deployments:
-  - name: frontend
-    kind: s3
-    aws_role: github_action_push_S3
-    artifact_bucket:
-      secret: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET
-    targets:
-      - bucket:
-          secret: FRONTEND_APP_S3_BUCKET
-    invalidations:
-      - distribution:
-          secret: FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID
-        paths: [/index.html, /assets/*, /mockServiceWorker.js]
-  - name: backend
-    kind: ecs
-    aws_role: github_action_manage_push_ecr_ecs
-    repository:
-      var: ARTIFACT_ECR_REPOSITORY
-    services:
-      - cluster:
-          var: ECS_CLUSTER
-        service:
-          var: ECS_SERVICE
-        container:
-          var: ECS_SERVICE
-        ssm_parameter: /ecs/{cluster}/{service}/container-image
+backend:
+  dockerfile: backend/Dockerfile
+  build_args:
+    RELEASE_TAG: "{release_version}"
+    BUILD_TIMESTAMP: "{build_timestamp}"
+    ECR_REPOSITORY: "{repository}:{sha}"
+    GITHUB_REF: "{github_ref}"
+
+load_tests:
+  enabled: true

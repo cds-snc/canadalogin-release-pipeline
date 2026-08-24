@@ -2,11 +2,86 @@
 
 The default caller configuration path is `.github/release-pipeline-configuration.yml`. Unknown or malformed values fail before release-please, builds, or deployments begin.
 
+## Schema 2
+
+Schema 2 is the recommended caller interface. It describes the application profile and only the values that are genuinely application-specific. Release-please, environment promotion, artifact identity, AWS region, concurrency, approvals, notifications, and deployment safety remain central behavior.
+
+```yaml
+schema_version: 2
+application: profile-management
+profile: spa-ecs
+environments: [dev, test, staging, prod]
+
+frontend:
+  environment:
+    VITE_BACKEND_API_URL:
+      var: VITE_BACKEND_API_URL
+    VITE_ENVIRONMENT: "{environment}"
+    VITE_RELEASE_TAG: "{release_version}"
+  invalidation_paths: [/index.html, /assets/*]
+
+backend:
+  dockerfile: backend/Dockerfile
+
+load_tests:
+  enabled: true
+```
+
+The supported profiles are:
+
+- `ecs-service`: one Dockerfile-backed ECS image and service.
+- `spa-ecs`: one frontend build published to S3 and one shared Dockerfile-backed ECS image.
+- `static-site`: one static build published to the declared S3 targets, with one target and CloudFront invalidation per site language or domain.
+
+Schema 2 backend blocks accept `dockerfile` only. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
+
+Frontend and static-site installs use `npm ci` with the repository lockfile. The pnpm exception uses the declared pnpm version and `--frozen-lockfile`. Node.js defaults to `22`.
+
+### Infrastructure contract
+
+Schema 2 resource names are supplied as GitHub **Variables** on each deployment environment. They are not derived from the display name in `application` and are not secrets. Terraform must publish or maintain these keys as part of the application's release contract:
+
+| Variable | Used by |
+| --- | --- |
+| `AWS_ACCOUNT_ID` | Central AWS role ARN construction. |
+| `RELEASE_S3_ROLE` | S3 and CloudFront build/deploy role name. |
+| `RELEASE_ECS_ROLE` | ECR, ECS, and SSM build/deploy role name. |
+| `RELEASE_FRONTEND_ARTIFACT_BUCKET` | SPA frontend build artifact bucket. |
+| `RELEASE_FRONTEND_BUCKET` | SPA frontend deployment bucket. |
+| `RELEASE_FRONTEND_DISTRIBUTION_ID` | SPA frontend CloudFront distribution. |
+| `RELEASE_STATIC_ARTIFACT_BUCKET` | Static-site build artifact bucket. |
+| `RELEASE_SITE_<TARGET>_BUCKET` | Static-site target bucket, such as `RELEASE_SITE_EN_BUCKET`. |
+| `RELEASE_SITE_<TARGET>_DISTRIBUTION_ID` | Static-site target distribution. |
+| `RELEASE_ECR_REPOSITORY` | Standard backend ECR repository URL. |
+| `RELEASE_LOAD_TEST_ECR_REPOSITORY` | Optional load-test ECR repository URL. |
+| `RELEASE_ECS_CLUSTER` | Default backend ECS cluster name. |
+| `RELEASE_ECS_SERVICE` | Default backend ECS service name. |
+| `RELEASE_ECS_CONTAINER` | Default backend ECS container name. |
+| `RELEASE_ECS_<SERVICE>_CLUSTER` | Named ECS service cluster, for example `WEB`. |
+| `RELEASE_ECS_<SERVICE>_SERVICE` | Named ECS service name. |
+| `RELEASE_ECS_<SERVICE>_CONTAINER` | Named ECS container name. |
+
+Terraform outputs should be mapped to these stable keys for every enabled environment. A multi-service application publishes one key set per service; a bilingual site publishes one key set per target. Resource values are passed to the release CLI through `RELEASE_PIPELINE_VARS` and are never placed in the application YAML.
+
+### Load tests
+
+```yaml
+load_tests:
+  enabled: true
+  dockerfile: load_tests/Dockerfile
+```
+
+`enabled` defaults to the standard `load_tests/Dockerfile`. The build uses the staging desired SHA, publishes the SHA and `latest` image tags to `RELEASE_LOAD_TEST_ECR_REPOSITORY`, and is a non-gating staging auxiliary build. It does not update an application ECS service. The source Dockerfile must exist in the caller repository before enabling the capability.
+
+## Schema 1 compatibility
+
+Schema 1 remains accepted while callers migrate. New callers should use schema 2 and should not add new schema 1 configuration.
+
 ## Top-level fields
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `schema_version` | yes | Must be `1`. |
+| `schema_version` | yes | Must be `1` for compatibility configurations or `2` for the recommended profile configuration. |
 | `application` | yes | Human-readable name used in notifications. |
 | `aws_region` | no | AWS region, default `ca-central-1`. |
 | `environments` | yes | Development, deployable, and versioned environments. |
@@ -22,19 +97,14 @@ The default caller configuration path is `.github/release-pipeline-configuration
 Infrastructure and build values use one of three reference forms:
 
 ```yaml
-literal: fixed-value
-from_variable:
-  var: GITHUB_CONFIGURATION_VARIABLE
-from_secret:
-  secret: GITHUB_ACTIONS_SECRET
-optional_variable:
-  var: OPTIONAL_VARIABLE
+value: fixed-value
+var: GITHUB_CONFIGURATION_VARIABLE
+secret: GITHUB_ACTIONS_SECRET
+var: OPTIONAL_VARIABLE
   default: fallback
 ```
 
-Variables come from `${{ toJSON(vars) }}` after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them.
-
-Secret references are validated against the reusable workflow interface. Existing named application secrets remain supported. Custom build values may use `BUILD_SECRET_1` through `BUILD_SECRET_8`; custom S3/ECS values may use `DEPLOY_SECRET_1` through `DEPLOY_SECRET_8`; hooks use `HOOK_SECRET_1` through `HOOK_SECRET_4`. Configure those names in each GitHub environment and map them to meaningful command environment names in YAML.
+Variables come from `${{ toJSON(vars) }}` after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. Named secrets remain supported for genuinely sensitive integrations and notifications. Schema 2 does not expose numbered secret slots.
 
 Supported template fields are:
 
@@ -227,7 +297,7 @@ Hooks run from the caller repository with:
 - `RELEASE_ENVIRONMENT`
 - `RELEASE_DEPLOYMENT_SHA`
 - `RELEASE_FORCE_REDEPLOY`
-- optional environment secrets named `HOOK_SECRET_1` through `HOOK_SECRET_4`
+- explicitly mapped named secrets supported by the reusable workflow
 
 Adding a new arbitrary secret requires mapping a `HOOK_SECRET_*` name in the caller environment. Secrets are not packed into a JSON object.
 
