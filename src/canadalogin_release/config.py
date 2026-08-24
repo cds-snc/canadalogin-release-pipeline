@@ -13,17 +13,16 @@ class ConfigError(ValueError):
     """Raised when a release pipeline configuration is invalid."""
 
 
-INFO_NOTIFICATION_WORKFLOW_SECRETS = frozenset(
-    {
-        "GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK",
-        "GC_SIGNIN_WEBSITE_OPS_SLACK_INFO_WEBHOOK",
-    }
+DEFAULT_INFO_NOTIFICATION_SECRET = "RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK"
+DEFAULT_ALERT_NOTIFICATION_SECRET = "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK"
+DEFAULT_ALERT_NOTIFICATION_SECRET_SLOTS = tuple(
+    f"{DEFAULT_ALERT_NOTIFICATION_SECRET}_{index}" for index in range(1, 6)
 )
+INFO_NOTIFICATION_WORKFLOW_SECRETS = frozenset({DEFAULT_INFO_NOTIFICATION_SECRET})
 ALERT_NOTIFICATION_WORKFLOW_SECRETS = frozenset(
     {
-        "CL_DEV_SLACK_ALERT_WEBHOOK",
-        "GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK",
-        "GC_SIGNIN_WEBSITE_OPS_SLACK_ALERT_WEBHOOK",
+        DEFAULT_ALERT_NOTIFICATION_SECRET,
+        *DEFAULT_ALERT_NOTIFICATION_SECRET_SLOTS,
     }
 )
 NOTIFICATION_WORKFLOW_SECRETS = frozenset(
@@ -139,6 +138,7 @@ class NotificationConfig:
     info_webhook: ValueReference | None = None
     alert_webhooks: tuple[ValueReference, ...] = ()
     notify_development_failures: bool = True
+    use_platform_defaults: bool = False
 
 
 @dataclass(frozen=True)
@@ -285,7 +285,6 @@ def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
             "backend",
             "site",
             "load_tests",
-            "notifications",
             "hooks",
             "events",
         },
@@ -308,7 +307,7 @@ def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
         versioned=tuple(environment for environment in deploy if environment != "dev"),
     )
 
-    notifications = _parse_v2_notifications(raw)
+    notifications = NotificationConfig(use_platform_defaults=True)
     hooks = _parse_hooks(raw.get("hooks", {}))
     repository_dispatch = _parse_events(raw.get("events", {}), deploy)
 
@@ -344,48 +343,6 @@ def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
     )
     _validate_pipeline_config(config)
     return config
-
-
-def _parse_v2_notifications(raw: Mapping[str, Any]) -> NotificationConfig:
-    notifications_raw = _optional_mapping(raw, "notifications", "notifications")
-    _reject_unknown(
-        notifications_raw,
-        {"info_webhook", "alert_webhooks", "notify_development_failures"},
-        "notifications",
-    )
-    info_raw = notifications_raw.get(
-        "info_webhook", {"secret": "GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK"}
-    )
-    alert_raw = notifications_raw.get(
-        "alert_webhooks", [{"secret": "GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK"}]
-    )
-    return NotificationConfig(
-        info_webhook=(
-            ValueReference.parse(
-                info_raw,
-                "notifications.info_webhook",
-                INFO_NOTIFICATION_WORKFLOW_SECRETS,
-            )
-            if info_raw is not None
-            else None
-        ),
-        alert_webhooks=tuple(
-            ValueReference.parse(
-                value,
-                f"notifications.alert_webhooks[{index}]",
-                ALERT_NOTIFICATION_WORKFLOW_SECRETS,
-            )
-            for index, value in enumerate(
-                _sequence(alert_raw, "notifications.alert_webhooks")
-            )
-        ),
-        notify_development_failures=_optional_bool(
-            notifications_raw,
-            "notify_development_failures",
-            True,
-            "notifications.notify_development_failures",
-        ),
-    )
 
 
 def _parse_hooks(raw: object) -> HookConfig:

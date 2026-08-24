@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import json
 import urllib.request
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from .config import ConfigError, PipelineConfig, ValueReference
+from .config import (
+    DEFAULT_ALERT_NOTIFICATION_SECRET,
+    DEFAULT_ALERT_NOTIFICATION_SECRET_SLOTS,
+    DEFAULT_INFO_NOTIFICATION_SECRET,
+    ConfigError,
+    PipelineConfig,
+)
 from .runtime import RuntimeContext, resolve_reference
 
 STATUS_DETAILS = {
@@ -23,6 +29,27 @@ class NotificationResult:
     skipped: bool
 
 
+def default_info_webhook_values(secrets: Mapping[str, str]) -> tuple[str, ...]:
+    value = secrets.get(DEFAULT_INFO_NOTIFICATION_SECRET, "")
+    return (value,) if value else ()
+
+
+def default_alert_webhook_values(secrets: Mapping[str, str]) -> tuple[str, ...]:
+    numbered_values = tuple(
+        secrets.get(secret_name, "")
+        for secret_name in DEFAULT_ALERT_NOTIFICATION_SECRET_SLOTS
+    )
+    configured_numbered_values = tuple(value for value in numbered_values if value)
+    if configured_numbered_values:
+        return configured_numbered_values
+    value = secrets.get(DEFAULT_ALERT_NOTIFICATION_SECRET, "")
+    return (value,) if value else ()
+
+
+def pipeline_failure_webhook_values(secrets: Mapping[str, str]) -> tuple[str, ...]:
+    return default_alert_webhook_values(secrets)
+
+
 def notify(
     config: PipelineConfig,
     status: str,
@@ -37,16 +64,23 @@ def notify(
     except KeyError as error:
         raise ConfigError(f"Unknown notification status {status!r}") from error
 
-    references: tuple[ValueReference, ...]
+    webhooks: tuple[str, ...]
     if channel == "info":
-        references = (
-            (config.notifications.info_webhook,)
-            if config.notifications.info_webhook is not None
-            else ()
-        )
+        if config.notifications.use_platform_defaults:
+            webhooks = default_info_webhook_values(context.secrets)
+        elif config.notifications.info_webhook is None:
+            webhooks = ()
+        else:
+            webhooks = (resolve_reference(config.notifications.info_webhook, context),)
     else:
-        references = config.notifications.alert_webhooks
-    if not references:
+        if config.notifications.use_platform_defaults:
+            webhooks = default_alert_webhook_values(context.secrets)
+        else:
+            webhooks = tuple(
+                resolve_reference(reference, context)
+                for reference in config.notifications.alert_webhooks
+            )
+    if not webhooks:
         print(f"No {channel} Slack webhook is configured; skipping notification.")
         return NotificationResult(delivered=0, skipped=True)
 
@@ -57,9 +91,9 @@ def notify(
     )
     body = json.dumps({"text": text}, separators=(",", ":")).encode()
     send = sender or _send
-    for reference in references:
-        send(resolve_reference(reference, context), body)
-    return NotificationResult(delivered=len(references), skipped=False)
+    for webhook in webhooks:
+        send(webhook, body)
+    return NotificationResult(delivered=len(webhooks), skipped=False)
 
 
 def notify_pipeline_failure(

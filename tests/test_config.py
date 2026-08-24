@@ -11,7 +11,7 @@ BASE_CONFIG = """
 schema_version: 1
 application: Example application
 environments: {development: dev, deploy: [dev, test, staging, prod], versioned: [test, staging, prod]}
-notifications: {info_webhook: {secret: GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK}, alert_webhooks: [{secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK}]}
+notifications: {info_webhook: {secret: RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK}, alert_webhooks: [{secret: RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK}]}
 builds:
 - {name: frontend, kind: command, environments: [dev, test, staging, prod], aws_role: github_action_push_s3, command: {working_directory: frontend, steps: [[npm, ci], [npm, run, build]], environment: {VITE_API_URL: {secret: VITE_API_BASE_URL}, VITE_ENVIRONMENT: "{environment}"}}, s3_artifact: {source: frontend/dist, bucket: {secret: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET}}}
 - {name: backend, kind: docker, environments: [dev], aws_role: github_action_push_ecr, dns_audit: true, docker: {context: backend, dockerfile: backend/Dockerfile, repository: {var: ECR_REPOSITORY}, tags: [sha, latest, release], build_args: {APP_VERSION: "{release_version}"}}, sbom: {name: example-backend, dockerfile: backend/Dockerfile}}
@@ -94,6 +94,19 @@ class PipelineConfigTest(unittest.TestCase):
         self.assertEqual(config.builds[2].source_environment, "staging")
         self.assertFalse(config.builds[2].gates_deployment)
 
+    def test_schema_two_uses_platform_notification_defaults(self) -> None:
+        config = self.load(SCHEMA_TWO_CONFIG)
+
+        self.assertIsNone(config.notifications.info_webhook)
+        self.assertEqual(config.notifications.alert_webhooks, ())
+        self.assertTrue(config.notifications.use_platform_defaults)
+
+    def test_schema_two_rejects_slack_configuration(self) -> None:
+        invalid = SCHEMA_TWO_CONFIG + "\nnotifications: {}\n"
+
+        with self.assertRaisesRegex(ConfigError, "unknown keys: notifications"):
+            self.load(invalid)
+
     def test_schema_two_rejects_old_context_key(self) -> None:
         with self.assertRaisesRegex(
             ConfigError, "backend contains unknown keys: context"
@@ -152,8 +165,8 @@ class PipelineConfigTest(unittest.TestCase):
 
     def test_rejects_alert_secret_in_info_webhook(self) -> None:
         invalid = BASE_CONFIG.replace(
-            "info_webhook: {secret: GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK}",
-            "info_webhook: {secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK}",
+            "info_webhook: {secret: RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK}",
+            "info_webhook: {secret: RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK}",
         )
 
         with self.assertRaisesRegex(ConfigError, "do not expose"):

@@ -73,9 +73,11 @@ load_tests:
 
 `enabled` defaults to the standard `load_tests/Dockerfile`. The build uses the staging desired SHA, publishes the SHA and `latest` image tags to `RELEASE_LOAD_TEST_ECR_REPOSITORY`, and is a non-gating staging auxiliary build. It does not update an application ECS service. The source Dockerfile must exist in the caller repository before enabling the capability.
 
-## Schema 1 compatibility
+## Schema 1 legacy
 
-Schema 1 remains accepted while callers migrate. New callers should use schema 2 and should not add new schema 1 configuration.
+The legacy schema 1 parser remains temporarily while the old configurations are
+removed. It is not part of the schema 2 contract. New configurations should use
+schema 2 and should not add schema 1 fields.
 
 ## Top-level fields
 
@@ -86,7 +88,7 @@ Schema 1 remains accepted while callers migrate. New callers should use schema 2
 | `aws_region` | no | AWS region, default `ca-central-1`. |
 | `environments` | yes | Development, deployable, and versioned environments. |
 | `release` | no | release-please and tag-prefix settings. |
-| `notifications` | no | Slack webhook references and dev-failure policy. |
+| `notifications` | no | Legacy schema 1 only. Schema 2 rejects this key and uses standard deployment secrets. |
 | `builds` | no | Artifact build definitions. |
 | `deployments` | no | S3 or ECS deployment definitions. |
 | `hooks` | no | Repository-owned lifecycle commands. |
@@ -104,7 +106,7 @@ var: OPTIONAL_VARIABLE
   default: fallback
 ```
 
-Variables come from `${{ toJSON(vars) }}` after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. Named secrets remain supported for genuinely sensitive integrations and notifications. Schema 2 does not expose numbered secret slots.
+Variables come from `${{ toJSON(vars) }}` after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. Named secrets remain supported for genuinely sensitive integrations and legacy schema 1 configurations. Schema 2 uses the standard Slack secrets described below instead of Slack value references.
 
 Supported template fields are:
 
@@ -147,15 +149,20 @@ When release support is enabled, repository validation requires:
 
 ## Notifications
 
-```yaml
-notifications:
-  info_webhook:
-    secret: GC_SIGNIN_OPS_SLACK_INFO_WEBHOOK
-  alert_webhooks:
-    - secret: GC_SIGNIN_OPS_SLACK_ALERT_WEBHOOK
-    - secret: CL_DEV_SLACK_ALERT_WEBHOOK
-  notify_development_failures: true
-```
+Schema 2 configurations contain no Slack fields. Register these as optional
+GitHub Actions **secrets** on each deployment environment:
+
+| Secret | Behavior |
+| --- | --- |
+| `RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK` | Deployment start and success messages. |
+| `RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK` | The single alert destination when no numbered alert secret is registered. |
+| `RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1` through `_5` | Up to five alert destinations. If any numbered secret is registered, all non-empty numbered secrets are used in numerical order and the unsuffixed secret is ignored. |
+
+Numbered alert slots may be sparse; missing or empty slots are skipped. Secrets
+ending in `_6` or higher are not supported. The same alert convention is used
+for build, SBOM, deployment, and pipeline failures. The reusable workflows map
+these secrets directly to their notification steps, so applications do not
+declare Slack settings in YAML.
 
 Start and success messages are sent for manifest promotions and manual deployments. Failure messages are sent for promoted/non-dev environments and, by default, dev. Every message names its environment.
 
