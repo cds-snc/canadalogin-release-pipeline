@@ -1,0 +1,343 @@
+name: Release pipeline acceptance tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-sha:
+        description: Prospective release-pipeline commit to exercise.
+        required: true
+        type: string
+      pull-request-number:
+        description: Pull request to update when the suite completes.
+        required: false
+        default: ""
+        type: string
+      aws-account-id:
+        description: Scratch AWS account used by the acceptance infrastructure.
+        required: false
+        default: "014097726303"
+        type: string
+      aws-region:
+        description: AWS region used by the acceptance infrastructure.
+        required: false
+        default: ca-central-1
+        type: string
+
+concurrency:
+  group: canadalogin-release-acceptance-tests
+  queue: max
+
+permissions:
+  actions: read
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  terraform:
+    name: Apply acceptance infrastructure
+    runs-on: ubuntu-latest
+    environment: acceptance-terraform
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Confirm prospective SHA
+        env:
+          EXPECTED_SHA: ${{ inputs.release-sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/cl-acceptance-terraform
+          role-session-name: CanadaLoginAcceptanceTerraform
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Bootstrap Terraform state store
+        env:
+          AWS_REGION: ${{ inputs.aws-region }}
+          TF_STATE_BUCKET: cl-acceptance-tfstate-${{ inputs.aws-account-id }}
+          TF_STATE_LOCK_TABLE: cl-acceptance-tfstate-lock-${{ inputs.aws-account-id }}
+        run: ./acceptance/scripts/bootstrap-terraform-state.sh
+
+      - name: Format and initialize Terraform
+        env:
+          AWS_REGION: ${{ inputs.aws-region }}
+          TF_STATE_BUCKET: cl-acceptance-tfstate-${{ inputs.aws-account-id }}
+          TF_STATE_LOCK_TABLE: cl-acceptance-tfstate-lock-${{ inputs.aws-account-id }}
+        run: |
+          terraform -chdir=acceptance/terraform fmt -check -recursive
+          terraform -chdir=acceptance/terraform init -input=false -reconfigure \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=release-pipeline-acceptance/terraform.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE"
+          terraform -chdir=acceptance/terraform validate
+
+      - name: Apply acceptance Terraform
+        env:
+          AWS_REGION: ${{ inputs.aws-region }}
+          TF_VAR_aws_account_id: ${{ inputs.aws-account-id }}
+          TF_VAR_aws_region: ${{ inputs.aws-region }}
+          TF_VAR_github_repository: ${{ github.repository }}
+        run: terraform -chdir=acceptance/terraform apply -input=false -auto-approve
+
+  prepare_standard:
+    name: Clear standard ECS state
+    needs: terraform
+    if: needs.terraform.result == 'success'
+    runs-on: ubuntu-latest
+    environment: acceptance-standard
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/cl-acceptance-standard-actions
+          role-session-name: CanadaLoginAcceptancePrepareStandard
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Clear ECR images before the run
+        run: ./acceptance/scripts/cleanup.sh --ecr-repository cl-acceptance-standard
+
+  prepare_react:
+    name: Clear React ECS state
+    needs: terraform
+    if: needs.terraform.result == 'success'
+    runs-on: ubuntu-latest
+    environment: acceptance-react
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/cl-acceptance-react-actions
+          role-session-name: CanadaLoginAcceptancePrepareReact
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Clear ECR and S3 state before the run
+        run: |
+          ./acceptance/scripts/cleanup.sh --ecr-repository cl-acceptance-react
+          ./acceptance/scripts/cleanup.sh \
+            --bucket cl-acceptance-react-artifacts-${{ inputs.aws-account-id }} \
+            --bucket cl-acceptance-react-site-${{ inputs.aws-account-id }}
+
+  prepare_failure:
+    name: Clear failure-mode ECS state
+    needs: terraform
+    if: needs.terraform.result == 'success'
+    runs-on: ubuntu-latest
+    environment: acceptance-failure
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/cl-acceptance-failure-actions
+          role-session-name: CanadaLoginAcceptancePrepareFailure
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Clear ECR images before the run
+        run: ./acceptance/scripts/cleanup.sh --ecr-repository cl-acceptance-failure
+
+  standard:
+    name: Exercise standard ECS pipeline
+    needs: [prepare_standard, prepare_react, prepare_failure]
+    uses: ./.github/workflows/release.yml
+    with:
+      config-path: acceptance/scenarios/standard-ecs/release-pipeline-configuration.yml
+      aws-account-id: ${{ inputs.aws-account-id }}
+      pipeline_id: acceptance-standard-${{ github.run_id }}
+      environment: acceptance-standard
+      rebuild: true
+    secrets: inherit
+
+  react:
+    name: Exercise ECS plus React pipeline
+    needs: [prepare_standard, prepare_react, prepare_failure]
+    uses: ./.github/workflows/release.yml
+    with:
+      config-path: acceptance/scenarios/react-ecs/release-pipeline-configuration.yml
+      aws-account-id: ${{ inputs.aws-account-id }}
+      pipeline_id: acceptance-react-${{ github.run_id }}
+      environment: acceptance-react
+      rebuild: true
+    secrets: inherit
+
+  failure:
+    name: Exercise expected health-hook failure
+    needs: [prepare_standard, prepare_react, prepare_failure]
+    uses: ./.github/workflows/release.yml
+    with:
+      config-path: acceptance/scenarios/failure-ecs/release-pipeline-configuration.yml
+      aws-account-id: ${{ inputs.aws-account-id }}
+      pipeline_id: acceptance-failure-${{ github.run_id }}
+      environment: acceptance-failure
+      rebuild: true
+    secrets: inherit
+
+  verify_standard:
+    name: Verify standard ECS state
+    if: always()
+    needs: [standard]
+    runs-on: ubuntu-latest
+    environment: acceptance-standard
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/cl-acceptance-standard-actions
+          role-session-name: CanadaLoginAcceptanceVerifyStandard
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Verify workflow and AWS state
+        env:
+          EXPECTED_RESULT: success
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PIPELINE_RESULT: ${{ needs.standard.result }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 acceptance/scripts/verify.py --scenario standard-ecs
+
+  verify_react:
+    name: Verify React ECS state
+    if: always()
+    needs: [react]
+    runs-on: ubuntu-latest
+    environment: acceptance-react
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/cl-acceptance-react-actions
+          role-session-name: CanadaLoginAcceptanceVerifyReact
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Verify workflow and AWS state
+        env:
+          EXPECTED_RESULT: success
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PIPELINE_RESULT: ${{ needs.react.result }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 acceptance/scripts/verify.py --scenario react-ecs
+
+  verify_failure:
+    name: Verify expected failure state
+    if: always()
+    needs: [failure]
+    runs-on: ubuntu-latest
+    environment: acceptance-failure
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/cl-acceptance-failure-actions
+          role-session-name: CanadaLoginAcceptanceVerifyFailure
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Verify expected failure and AWS state
+        env:
+          EXPECTED_RESULT: failure
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PIPELINE_RESULT: ${{ needs.failure.result }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 acceptance/scripts/verify.py --scenario failure-ecs
+
+  assert_suite:
+    name: Acceptance suite result
+    if: always()
+    needs: [verify_standard, verify_react, verify_failure]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every scenario verification
+        env:
+          STANDARD_RESULT: ${{ needs.verify_standard.result }}
+          REACT_RESULT: ${{ needs.verify_react.result }}
+          FAILURE_RESULT: ${{ needs.verify_failure.result }}
+        run: |
+          set -euo pipefail
+          test "$STANDARD_RESULT" = success
+          test "$REACT_RESULT" = success
+          test "$FAILURE_RESULT" = success
+
+  report:
+    name: Report acceptance suite result
+    if: always()
+    needs: [assert_suite]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Comment on the release pull request
+        if: inputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull-request-number }}
+          REPOSITORY: ${{ github.repository }}
+          RESULT: ${{ needs.assert_suite.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Release pipeline acceptance tests $RESULT. $RUN_URL"

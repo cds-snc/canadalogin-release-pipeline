@@ -8,6 +8,11 @@ on:
         required: false
         default: .github/release-pipeline-configuration.yml
         type: string
+      aws-account-id:
+        description: Optional AWS account ID override for isolated test callers.
+        required: false
+        default: ""
+        type: string
       pipeline_id:
         description: Optional concurrency namespace for independent pipelines in one repository.
         required: false
@@ -181,6 +186,7 @@ jobs:
     uses: $/.github/workflows/build.yml
     with:
       config-path: ${{ inputs.config-path }}
+      aws-account-id: ${{ inputs.aws-account-id }}
       enabled: ${{ matrix.enabled }}
       name: ${{ matrix.name }}
       environment: ${{ matrix.environment }}
@@ -215,6 +221,7 @@ jobs:
     uses: $/.github/workflows/build.yml
     with:
       config-path: ${{ inputs.config-path }}
+      aws-account-id: ${{ inputs.aws-account-id }}
       enabled: ${{ matrix.enabled }}
       name: ${{ matrix.name }}
       environment: ${{ matrix.environment }}
@@ -248,6 +255,7 @@ jobs:
     uses: $/.github/workflows/deploy-environment.yml
     with:
       config-path: ${{ inputs.config-path }}
+      aws-account-id: ${{ inputs.aws-account-id }}
       pipeline_id: ${{ inputs.pipeline_id }}
       enabled: ${{ matrix.enabled }}
       environment: ${{ matrix.environment }}

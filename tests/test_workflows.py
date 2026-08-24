@@ -89,6 +89,41 @@ class WorkflowContractTest(unittest.TestCase):
             "permissions:\n      contents: write\n      id-token: write", workflow
         )
 
+    def test_acceptance_suite_is_explicitly_opt_in_and_fans_out(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
+        ).read_text()
+
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertNotIn("\n  pull_request:", workflow)
+        self.assertIn("config-path: acceptance/scenarios/standard-ecs/", workflow)
+        self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
+        self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)
+        self.assertEqual(workflow.count("pipeline_id: acceptance-"), 3)
+        self.assertIn(
+            "needs: [prepare_standard, prepare_react, prepare_failure]", workflow
+        )
+        self.assertIn(
+            "needs: [verify_standard, verify_react, verify_failure]", workflow
+        )
+
+    def test_acceptance_comment_dispatch_is_maintainer_gated(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "release-pipeline-test-command.yml"
+        ).read_text()
+
+        self.assertIn("issue_comment:", workflow)
+        self.assertIn("types: [created]", workflow)
+        self.assertIn('COMMENT_BODY" != "!test"', workflow)
+        self.assertIn('head_repository" != "$REPOSITORY"', workflow)
+        self.assertIn('base_branch" != "main"', workflow)
+        self.assertIn("admin|maintain|push)", workflow)
+        self.assertIn(
+            "actions/workflows/release-pipeline-tests.yml/dispatches", workflow
+        )
+        self.assertNotIn("pull_request_target", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

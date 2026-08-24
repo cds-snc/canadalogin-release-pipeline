@@ -1,0 +1,72 @@
+schema_version: 1
+application: release-pipeline acceptance React ECS
+aws_region: ca-central-1
+
+environments:
+  development: acceptance-react
+  deploy: [acceptance-react]
+  versioned: []
+
+release:
+  enabled: false
+
+builds:
+  - name: frontend
+    kind: command
+    environments: [acceptance-react]
+    aws_role: cl-acceptance-react-actions
+    node_version: "22"
+    command:
+      working_directory: acceptance/apps/react-ecs/frontend
+      steps:
+        - [npm, ci]
+        - [npm, run, build]
+      environment:
+        VITE_RELEASE_SHA: "{sha}"
+    s3_artifact:
+      source: acceptance/apps/react-ecs/frontend/dist
+      bucket:
+        value: cl-acceptance-react-artifacts-014097726303
+      prefix: "{sha}"
+      delete: true
+
+  - name: backend
+    kind: docker
+    environments: [acceptance-react]
+    aws_role: cl-acceptance-react-actions
+    docker:
+      context: acceptance/apps/react-ecs/backend
+      dockerfile: acceptance/apps/react-ecs/backend/Dockerfile
+      repository:
+        value: 014097726303.dkr.ecr.ca-central-1.amazonaws.com/cl-acceptance-react
+      tags: [sha]
+      build_args:
+        APP_VERSION: "{release_version}"
+
+deployments:
+  - name: frontend
+    kind: s3
+    environments: [acceptance-react]
+    aws_role: cl-acceptance-react-actions
+    artifact_bucket:
+      value: cl-acceptance-react-artifacts-014097726303
+    artifact_prefix: "{sha}"
+    targets:
+      - bucket:
+          value: cl-acceptance-react-site-014097726303
+        delete: true
+
+  - name: backend
+    kind: ecs
+    environments: [acceptance-react]
+    aws_role: cl-acceptance-react-actions
+    repository:
+      value: 014097726303.dkr.ecr.ca-central-1.amazonaws.com/cl-acceptance-react
+    services:
+      - cluster:
+          value: cl-acceptance-react
+        service:
+          value: cl-acceptance-react-app
+        container:
+          value: app
+        ssm_parameter: /release-pipeline-acceptance/react-ecs/container-image
