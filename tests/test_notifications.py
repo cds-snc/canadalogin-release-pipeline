@@ -7,6 +7,7 @@ from pathlib import Path
 from canadalogin_release.config import PipelineConfig
 from canadalogin_release.notifications import (
     default_alert_webhook_values,
+    default_info_webhook_values,
     notify,
     notify_pipeline_failure,
     pipeline_failure_webhook_values,
@@ -85,6 +86,44 @@ class NotificationTest(unittest.TestCase):
             ),
             ("https://hooks.example/base",),
         )
+
+    def test_default_info_webhook_uses_unsuffixed_secret_without_slots(self) -> None:
+        self.assertEqual(
+            default_info_webhook_values(
+                {
+                    "RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK": "https://hooks.example/base",
+                }
+            ),
+            ("https://hooks.example/base",),
+        )
+
+    def test_info_and_alert_defaults_use_the_same_numbered_slots(self) -> None:
+        cases = (
+            (
+                default_info_webhook_values,
+                "RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK",
+            ),
+            (
+                default_alert_webhook_values,
+                "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK",
+            ),
+        )
+
+        for resolve, base_secret in cases:
+            with self.subTest(base_secret=base_secret):
+                self.assertEqual(
+                    resolve(
+                        {
+                            base_secret: "https://hooks.example/base",
+                            f"{base_secret}_1": "https://hooks.example/one",
+                            f"{base_secret}_3": "https://hooks.example/three",
+                        }
+                    ),
+                    (
+                        "https://hooks.example/one",
+                        "https://hooks.example/three",
+                    ),
+                )
 
     def test_pipeline_failure_defaults_use_numbered_alert_slots(self) -> None:
         self.assertEqual(

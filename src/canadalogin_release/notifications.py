@@ -9,6 +9,7 @@ from .config import (
     DEFAULT_ALERT_NOTIFICATION_SECRET,
     DEFAULT_ALERT_NOTIFICATION_SECRET_SLOTS,
     DEFAULT_INFO_NOTIFICATION_SECRET,
+    DEFAULT_INFO_NOTIFICATION_SECRET_SLOTS,
     ConfigError,
     PipelineConfig,
 )
@@ -30,19 +31,33 @@ class NotificationResult:
 
 
 def default_info_webhook_values(secrets: Mapping[str, str]) -> tuple[str, ...]:
-    value = secrets.get(DEFAULT_INFO_NOTIFICATION_SECRET, "")
-    return (value,) if value else ()
+    return _default_webhook_values(
+        DEFAULT_INFO_NOTIFICATION_SECRET,
+        DEFAULT_INFO_NOTIFICATION_SECRET_SLOTS,
+        secrets,
+    )
 
 
 def default_alert_webhook_values(secrets: Mapping[str, str]) -> tuple[str, ...]:
+    return _default_webhook_values(
+        DEFAULT_ALERT_NOTIFICATION_SECRET,
+        DEFAULT_ALERT_NOTIFICATION_SECRET_SLOTS,
+        secrets,
+    )
+
+
+def _default_webhook_values(
+    base_secret: str,
+    numbered_secrets: Sequence[str],
+    secrets: Mapping[str, str],
+) -> tuple[str, ...]:
     numbered_values = tuple(
-        secrets.get(secret_name, "")
-        for secret_name in DEFAULT_ALERT_NOTIFICATION_SECRET_SLOTS
+        secrets.get(secret_name, "") for secret_name in numbered_secrets
     )
     configured_numbered_values = tuple(value for value in numbered_values if value)
     if configured_numbered_values:
         return configured_numbered_values
-    value = secrets.get(DEFAULT_ALERT_NOTIFICATION_SECRET, "")
+    value = secrets.get(base_secret, "")
     return (value,) if value else ()
 
 
