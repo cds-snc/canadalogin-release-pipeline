@@ -217,6 +217,12 @@ class WorkflowContractTest(unittest.TestCase):
             deploy_workflow,
         )
         self.assertIn(
+            "name: Deploy\n"
+            "    runs-on: ubuntu-latest\n"
+            "    continue-on-error: ${{ inputs.allow-health-check-failure }}",
+            deploy_workflow,
+        )
+        self.assertNotIn(
             "id: health_check\n"
             "        continue-on-error: ${{ inputs.allow-health-check-failure }}",
             deploy_workflow,

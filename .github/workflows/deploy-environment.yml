@@ -80,6 +80,7 @@ jobs:
     if: inputs.enabled
     name: Deploy
     runs-on: ubuntu-latest
+    continue-on-error: ${{ inputs.allow-health-check-failure }}
     concurrency:
       group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ inputs.environment }}
       queue: max
@@ -209,7 +210,6 @@ jobs:
 
       - name: Run health checks
         id: health_check
-        continue-on-error: ${{ inputs.allow-health-check-failure }}
         env: *hook-environment
         run: >-
           canadalogin-release hook health-check
