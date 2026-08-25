@@ -100,6 +100,15 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertNotIn("\n  pull_request:", workflow)
+        self.assertIn(
+            "permissions:\n"
+            "  actions: read\n"
+            "  contents: write\n"
+            "  id-token: write\n"
+            "  issues: write\n"
+            "  pull-requests: write\n",
+            workflow,
+        )
         self.assertIn("config-path: acceptance/scenarios/standard-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)

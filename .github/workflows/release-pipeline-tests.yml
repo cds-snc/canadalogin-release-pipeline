@@ -29,9 +29,10 @@ concurrency:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
   id-token: write
   issues: write
+  pull-requests: write
 
 jobs:
   terraform:
