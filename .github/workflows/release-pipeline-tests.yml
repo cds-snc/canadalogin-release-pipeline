@@ -159,7 +159,11 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Clear ECR images before the run
-        run: ./acceptance/scripts/cleanup.sh --ecr-repository cl-acceptance-standard
+        run: |
+          ./acceptance/scripts/cleanup.sh --ecr-repository cl-acceptance-standard
+          aws ecs wait services-stable \
+            --cluster cl-acceptance-standard \
+            --services cl-acceptance-standard-app
 
   prepare_react:
     name: Clear React ECS state
@@ -190,6 +194,9 @@ jobs:
           ./acceptance/scripts/cleanup.sh \
             --bucket cl-acceptance-react-artifacts-${{ inputs.aws-account-id }} \
             --bucket cl-acceptance-react-site-${{ inputs.aws-account-id }}
+          aws ecs wait services-stable \
+            --cluster cl-acceptance-react \
+            --services cl-acceptance-react-app
 
   prepare_failure:
     name: Clear failure-mode ECS state
@@ -215,7 +222,11 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Clear ECR images before the run
-        run: ./acceptance/scripts/cleanup.sh --ecr-repository cl-acceptance-failure
+        run: |
+          ./acceptance/scripts/cleanup.sh --ecr-repository cl-acceptance-failure
+          aws ecs wait services-stable \
+            --cluster cl-acceptance-failure \
+            --services cl-acceptance-failure-app
 
   standard:
     name: Exercise standard ECS pipeline

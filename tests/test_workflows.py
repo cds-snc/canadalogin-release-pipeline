@@ -197,6 +197,16 @@ class WorkflowContractTest(unittest.TestCase):
             self.assertIn("issues/$PR_NUMBER/comments", workflow)
             self.assertIn("could not be posted", workflow)
 
+    def test_acceptance_preparation_waits_for_ecs_stability(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
+        ).read_text()
+
+        self.assertEqual(workflow.count("aws ecs wait services-stable"), 3)
+        for scenario in ("standard", "react", "failure"):
+            self.assertIn(f"--cluster cl-acceptance-{scenario}", workflow)
+            self.assertIn(f"--services cl-acceptance-{scenario}-app", workflow)
+
     def test_release_please_is_standalone_and_uses_version_manifest(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
         config = json.loads((ROOT / "release-please-config.json").read_text())
