@@ -36,6 +36,11 @@ on:
         required: false
         default: true
         type: boolean
+      expect-health-check-failure:
+        description: Require the health check to fail and treat that failure as expected.
+        required: false
+        default: false
+        type: boolean
       sha:
         description: Desired commit SHA resolved by the planning job.
         required: true
@@ -210,6 +215,8 @@ jobs:
           --sha "${{ inputs.sha }}"
 
       - name: Run health checks
+        id: health_check
+        continue-on-error: ${{ inputs.expect-health-check-failure }}
         env: *hook-environment
         run: >-
           canadalogin-release hook health-check
@@ -217,7 +224,26 @@ jobs:
           --environment "$DEPLOY_ENVIRONMENT"
           --sha "${{ inputs.sha }}"
 
+      - name: Validate health-check result
+        id: validate_health_check
+        if: always()
+        env:
+          EXPECT_HEALTH_CHECK_FAILURE: ${{ inputs.expect-health-check-failure }}
+          HEALTH_CHECK_OUTCOME: ${{ steps.health_check.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$EXPECT_HEALTH_CHECK_FAILURE" == true ]]; then
+            expected_outcome=failure
+          else
+            expected_outcome=success
+          fi
+          if [[ "$HEALTH_CHECK_OUTCOME" != "$expected_outcome" ]]; then
+            printf 'Expected health-check outcome %s, got %s.\n' "$expected_outcome" "$HEALTH_CHECK_OUTCOME" >&2
+            exit 1
+          fi
+
       - name: Run after-deploy hooks
+        if: steps.validate_health_check.outcome == 'success' && steps.health_check.outcome == 'success'
         env: *hook-environment
         run: >-
           canadalogin-release hook after-deploy
@@ -226,7 +252,7 @@ jobs:
           --sha "${{ inputs.sha }}"
 
       - name: Notify Slack about deployment success
-        if: inputs.notify
+        if: inputs.notify && steps.validate_health_check.outcome == 'success' && steps.health_check.outcome == 'success'
         env:
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
@@ -247,7 +273,7 @@ jobs:
           --workflow-url "$WORKFLOW_URL"
 
       - name: Run failure hooks
-        if: failure()
+        if: failure() || steps.health_check.outcome == 'failure' || steps.validate_health_check.outcome == 'failure'
         env: *hook-environment
         run: >-
           canadalogin-release hook on-failure
@@ -256,7 +282,7 @@ jobs:
           --sha "${{ inputs.sha }}"
 
       - name: Notify Slack about deployment failure
-        if: failure() && inputs.notify-failure
+        if: (failure() || steps.health_check.outcome == 'failure' || steps.validate_health_check.outcome == 'failure') && inputs.notify-failure
         env:
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}

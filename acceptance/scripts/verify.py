@@ -260,8 +260,12 @@ def verify_failure_hook() -> None:
     jobs = [job for page in pages if isinstance(page, dict) for job in page.get("jobs", [])]
     steps = [step for job in jobs if isinstance(job, dict) for step in job.get("steps", []) if isinstance(step, dict)]
     require(
-        any(step.get("name") == "Run health checks" and step.get("conclusion") == "failure" for step in steps),
-        "The expected health-check failure was not observed.",
+        any(
+            step.get("name") == "Validate health-check result"
+            and step.get("conclusion") == "success"
+            for step in steps
+        ),
+        "The expected health-check outcome was not validated.",
     )
     require(
         any(step.get("name") == "Run failure hooks" and step.get("conclusion") == "success" for step in steps),

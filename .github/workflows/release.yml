@@ -28,6 +28,11 @@ on:
         required: false
         default: true
         type: boolean
+      expect-health-check-failure:
+        description: Require the health check to fail and treat that failure as expected.
+        required: false
+        default: false
+        type: boolean
       pipeline_id:
         description: Optional concurrency namespace for independent pipelines in one repository.
         required: false
@@ -276,6 +281,7 @@ jobs:
       aws-region: ${{ inputs.aws-region || matrix.aws_region }}
       github-environment: ${{ inputs.github-environment || matrix.environment }}
       create-deployment: ${{ inputs.create-deployment }}
+      expect-health-check-failure: ${{ inputs.expect-health-check-failure }}
       pipeline_id: ${{ inputs.pipeline_id }}
       enabled: ${{ matrix.enabled }}
       environment: ${{ matrix.environment }}
