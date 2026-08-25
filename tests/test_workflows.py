@@ -168,8 +168,14 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn('base_branch" != "main"', workflow)
         self.assertIn("admin|maintain|push)", workflow)
         self.assertIn(
+            'head_ref="$(jq -r \'.head.ref // ""\' <<<"$pr_json")"',
+            workflow,
+        )
+        self.assertIn(
             "actions/workflows/release-pipeline-tests.yml/dispatches", workflow
         )
+        self.assertIn('--arg ref "$head_ref"', workflow)
+        self.assertIn('--arg sha "$head_sha"', workflow)
         self.assertIn(
             '{ref:$ref,inputs:{"release-sha":$sha,"pull-request-number":$pr}}', workflow
         )
