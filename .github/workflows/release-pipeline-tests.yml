@@ -426,4 +426,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RESULT: ${{ needs.validate_request.result == 'success' && needs.assert_suite.result == 'success' && 'passed' || 'failed' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Release pipeline acceptance tests $RESULT. $RUN_URL"
+        run: |
+          if ! gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Release pipeline acceptance tests $RESULT. $RUN_URL"; then
+            printf '%s\n' 'Acceptance status was published, but the PR comment could not be posted.' >&2
+          fi

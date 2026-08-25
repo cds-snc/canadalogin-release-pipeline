@@ -91,6 +91,8 @@ jobs:
             exit 1
           fi
 
-          gh api --method POST \
+          if ! gh api --method POST \
             "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
-            -f "body=Release pipeline acceptance tests dispatched for $head_sha. $workflow_url"
+            -f "body=Release pipeline acceptance tests dispatched for $head_sha. $workflow_url"; then
+            printf '%s\n' 'Acceptance tests were dispatched, but the PR comment could not be posted.' >&2
+          fi

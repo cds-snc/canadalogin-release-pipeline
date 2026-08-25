@@ -184,6 +184,17 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn('"inputs=$inputs"', workflow)
         self.assertNotIn("pull_request_target", workflow)
 
+    def test_acceptance_comments_are_optional_after_status_updates(self) -> None:
+        dispatcher = (
+            ROOT / ".github" / "workflows" / "release-pipeline-test-command.yml"
+        ).read_text()
+        report = (ROOT / ".github" / "workflows" / "release-pipeline-tests.yml").read_text()
+
+        for workflow in (dispatcher, report):
+            self.assertIn("if ! gh api --method POST", workflow)
+            self.assertIn("issues/$PR_NUMBER/comments", workflow)
+            self.assertIn("could not be posted", workflow)
+
     def test_release_please_is_standalone_and_uses_version_manifest(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
         config = json.loads((ROOT / "release-please-config.json").read_text())
