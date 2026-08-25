@@ -37,7 +37,7 @@ jobs:
   terraform:
     name: Apply acceptance infrastructure
     runs-on: ubuntu-latest
-    environment: acceptance-terraform
+    environment: acceptance-tests
     steps:
       - name: Checkout prospective release
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -92,7 +92,7 @@ jobs:
     needs: terraform
     if: needs.terraform.result == 'success'
     runs-on: ubuntu-latest
-    environment: acceptance-standard
+    environment: acceptance-tests
     permissions:
       contents: read
       id-token: write
@@ -118,7 +118,7 @@ jobs:
     needs: terraform
     if: needs.terraform.result == 'success'
     runs-on: ubuntu-latest
-    environment: acceptance-react
+    environment: acceptance-tests
     permissions:
       contents: read
       id-token: write
@@ -148,7 +148,7 @@ jobs:
     needs: terraform
     if: needs.terraform.result == 'success'
     runs-on: ubuntu-latest
-    environment: acceptance-failure
+    environment: acceptance-tests
     permissions:
       contents: read
       id-token: write
@@ -179,6 +179,7 @@ jobs:
       aws-region: ${{ inputs.aws-region }}
       pipeline_id: acceptance-standard-${{ github.run_id }}
       environment: acceptance-standard
+      github-environment: acceptance-tests
       rebuild: true
     secrets: inherit
 
@@ -192,6 +193,7 @@ jobs:
       aws-region: ${{ inputs.aws-region }}
       pipeline_id: acceptance-react-${{ github.run_id }}
       environment: acceptance-react
+      github-environment: acceptance-tests
       rebuild: true
     secrets: inherit
 
@@ -205,6 +207,7 @@ jobs:
       aws-region: ${{ inputs.aws-region }}
       pipeline_id: acceptance-failure-${{ github.run_id }}
       environment: acceptance-failure
+      github-environment: acceptance-tests
       rebuild: true
     secrets: inherit
 
@@ -213,7 +216,7 @@ jobs:
     if: always()
     needs: [standard]
     runs-on: ubuntu-latest
-    environment: acceptance-standard
+    environment: acceptance-tests
     permissions:
       actions: read
       contents: read
@@ -249,7 +252,7 @@ jobs:
     if: always()
     needs: [react]
     runs-on: ubuntu-latest
-    environment: acceptance-react
+    environment: acceptance-tests
     permissions:
       actions: read
       contents: read
@@ -285,7 +288,7 @@ jobs:
     if: always()
     needs: [failure]
     runs-on: ubuntu-latest
-    environment: acceptance-failure
+    environment: acceptance-tests
     permissions:
       actions: read
       contents: read

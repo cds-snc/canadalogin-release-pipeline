@@ -16,10 +16,9 @@ Comment exactly `!test` on an open pull request in
 users with `push`, `maintain`, or `admin` repository permission, then dispatches
 `release-pipeline-tests.yml` at the pull request head SHA.
 
-Before the first run, create the GitHub environments
-`acceptance-terraform`, `acceptance-standard`, `acceptance-react`, and
-`acceptance-failure`. They do not need secrets, but their names are part of the
-OIDC trust policies for the AWS roles.
+Before the first run, create the GitHub environment `acceptance-tests`. It does
+not need secrets, but its name is part of the OIDC trust policies for the AWS
+roles.
 
 The suite applies Terraform first, clears scenario state before the run, and
 runs the standard ECS, React plus ECS, and expected health-hook failure
@@ -61,6 +60,7 @@ shared or production infrastructure.
 
 Every scenario has a separate VPC, public subnets, ALB, ECS cluster, ECS
 service, ECR repository, task roles, log group, and SSM image pointer. The React
-scenario also has separate private S3 artifact and site buckets. The workflow
-passes a unique `pipeline_id` to each nested release pipeline, so scenario
-concurrency groups cannot block or overwrite one another.
+scenario also has separate private S3 artifact and site buckets. All scenarios
+use the single `acceptance-tests` GitHub environment, while the workflow passes
+a unique `pipeline_id` to each nested release pipeline so scenario concurrency
+groups cannot block or overwrite one another.

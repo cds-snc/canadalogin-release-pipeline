@@ -104,6 +104,14 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)
         self.assertEqual(workflow.count("pipeline_id: acceptance-"), 3)
+        self.assertIn("    environment: acceptance-tests\n", workflow)
+        self.assertEqual(
+            workflow.count("      github-environment: acceptance-tests\n"), 3
+        )
+        self.assertNotIn("\n    environment: acceptance-terraform\n", workflow)
+        self.assertNotIn("\n    environment: acceptance-standard\n", workflow)
+        self.assertNotIn("\n    environment: acceptance-react\n", workflow)
+        self.assertNotIn("\n    environment: acceptance-failure\n", workflow)
         for scenario in ("standard-ecs", "react-ecs", "failure-ecs"):
             self.assertIn(
                 "config-path: acceptance/scenarios/"
@@ -125,6 +133,27 @@ class WorkflowContractTest(unittest.TestCase):
         )
         self.assertIn(
             "needs: [verify_standard, verify_react, verify_failure]", workflow
+        )
+
+        release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+        self.assertEqual(
+            release_workflow.count(
+                "github-environment: ${{ inputs.github-environment || matrix.environment }}"
+            ),
+            3,
+        )
+
+        build_workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
+        self.assertIn(
+            "name: ${{ inputs.github-environment || inputs.environment }}",
+            build_workflow,
+        )
+        deploy_workflow = (
+            ROOT / ".github" / "workflows" / "deploy-environment.yml"
+        ).read_text()
+        self.assertIn(
+            "environment: ${{ inputs.github-environment || inputs.environment }}",
+            deploy_workflow,
         )
 
     def test_acceptance_comment_dispatch_is_maintainer_gated(self) -> None:
