@@ -1,0 +1,47 @@
+schema_version: 1
+application: release-pipeline acceptance failure mode
+aws_region: ca-central-1
+
+environments:
+  development: acceptance-failure
+  deploy: [acceptance-failure]
+  versioned: []
+
+release:
+  enabled: false
+
+builds:
+  - name: backend
+    kind: docker
+    environments: [acceptance-failure]
+    aws_role: cl-acceptance-failure-actions
+    docker:
+      context: acceptance/apps/failure-ecs
+      dockerfile: acceptance/apps/failure-ecs/Dockerfile
+      repository:
+        value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-failure"
+      tags: [sha]
+      build_args:
+        APP_VERSION: "{release_version}"
+
+deployments:
+  - name: backend
+    kind: ecs
+    environments: [acceptance-failure]
+    aws_role: cl-acceptance-failure-actions
+    repository:
+      value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-failure"
+    services:
+      - cluster:
+          value: cl-acceptance-failure
+        service:
+          value: cl-acceptance-failure-app
+        container:
+          value: app
+        ssm_parameter: /release-pipeline-acceptance/failure-ecs/container-image
+
+hooks:
+  health_check:
+    - [python3, acceptance/hooks/fail-health-check.py]
+  on_failure:
+    - [python3, acceptance/hooks/record-failure.py]

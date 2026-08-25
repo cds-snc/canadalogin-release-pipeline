@@ -38,6 +38,10 @@ class RuntimeContext:
             "build_timestamp": self.build_timestamp,
             "github_ref": self.github_ref,
             "repository": repository,
+            "aws_account_id": os.environ.get("AWS_ACCOUNT_ID", ""),
+            "aws_region": os.environ.get(
+                "AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "")
+            ),
         }
 
     @classmethod

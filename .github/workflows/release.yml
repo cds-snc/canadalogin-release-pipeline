@@ -8,6 +8,16 @@ on:
         required: false
         default: .github/release-pipeline-configuration.yml
         type: string
+      aws-account-id:
+        description: Optional AWS account ID override for isolated test callers.
+        required: false
+        default: ""
+        type: string
+      aws-region:
+        description: Optional AWS region override for isolated test callers.
+        required: false
+        default: ""
+        type: string
       pipeline_id:
         description: Optional concurrency namespace for independent pipelines in one repository.
         required: false
@@ -181,6 +191,8 @@ jobs:
     uses: $/.github/workflows/build.yml
     with:
       config-path: ${{ inputs.config-path }}
+      aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region || matrix.aws_region }}
       enabled: ${{ matrix.enabled }}
       name: ${{ matrix.name }}
       environment: ${{ matrix.environment }}
@@ -189,7 +201,6 @@ jobs:
       notify-failure: ${{ matrix.notify_failure }}
       kind: ${{ matrix.kind }}
       aws-role: ${{ matrix.aws_role }}
-      aws-region: ${{ matrix.aws_region }}
       dns-audit: ${{ matrix.dns_audit }}
       node-version: ${{ matrix.node_version }}
       sbom-enabled: ${{ matrix.sbom_enabled }}
@@ -215,6 +226,8 @@ jobs:
     uses: $/.github/workflows/build.yml
     with:
       config-path: ${{ inputs.config-path }}
+      aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region || matrix.aws_region }}
       enabled: ${{ matrix.enabled }}
       name: ${{ matrix.name }}
       environment: ${{ matrix.environment }}
@@ -223,7 +236,6 @@ jobs:
       notify-failure: ${{ matrix.notify_failure }}
       kind: ${{ matrix.kind }}
       aws-role: ${{ matrix.aws_role }}
-      aws-region: ${{ matrix.aws_region }}
       dns-audit: ${{ matrix.dns_audit }}
       node-version: ${{ matrix.node_version }}
       sbom-enabled: ${{ matrix.sbom_enabled }}
@@ -248,11 +260,12 @@ jobs:
     uses: $/.github/workflows/deploy-environment.yml
     with:
       config-path: ${{ inputs.config-path }}
+      aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region || matrix.aws_region }}
       pipeline_id: ${{ inputs.pipeline_id }}
       enabled: ${{ matrix.enabled }}
       environment: ${{ matrix.environment }}
       sha: ${{ matrix.sha }}
-      aws-region: ${{ matrix.aws_region }}
       s3-role: ${{ matrix.s3_role }}
       ecs-role: ${{ matrix.ecs_role }}
       force-redeploy: ${{ fromJSON(needs.plan.outputs.force_redeploy) }}

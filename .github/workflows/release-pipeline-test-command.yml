@@ -1,0 +1,72 @@
+name: Request release pipeline acceptance tests
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  dispatch:
+    if: ${{ github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate request and dispatch prospective SHA
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$COMMENT_BODY" != "!test" ]]; then
+            exit 0
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          head_repository="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
+          head_sha="$(jq -r '.head.sha // ""' <<<"$pr_json")"
+          base_branch="$(jq -r '.base.ref // ""' <<<"$pr_json")"
+          pr_state="$(jq -r '.state // ""' <<<"$pr_json")"
+
+          if [[ "$head_repository" != "$REPOSITORY" ]]; then
+            printf '%s\n' 'Acceptance tests only run for branches in the release repository.' >&2
+            exit 1
+          fi
+          if [[ "$base_branch" != "main" || "$pr_state" != "open" || -z "$head_sha" ]]; then
+            printf '%s\n' 'Acceptance tests require an open pull request targeting main.' >&2
+            exit 1
+          fi
+
+          permission="$(gh api "repos/$REPOSITORY/collaborators/$COMMENTER/permission" --jq '.permission' 2>/dev/null || printf '%s' none)"
+          case "$permission" in
+            admin|maintain|push)
+              ;;
+            *)
+              printf 'Commenter %s does not have permission to request acceptance tests.\n' "$COMMENTER" >&2
+              exit 1
+              ;;
+          esac
+
+          payload="$(jq -cn \
+            --arg ref "$head_sha" \
+            --arg sha "$head_sha" \
+            --arg pr "$PR_NUMBER" \
+            '{ref:$ref,inputs:{"release-sha":$sha,"pull-request-number":$pr}}')"
+          gh api --method POST \
+            "repos/$REPOSITORY/actions/workflows/release-pipeline-tests.yml/dispatches" \
+            -H 'Content-Type: application/json' \
+            --input - <<<"$payload"
+
+          workflow_url="$SERVER_URL/$REPOSITORY/actions/workflows/release-pipeline-tests.yml"
+          gh api --method POST \
+            "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+            -f "body=Release pipeline acceptance tests dispatched for $head_sha. $workflow_url"
