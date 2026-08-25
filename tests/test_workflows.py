@@ -188,7 +188,9 @@ class WorkflowContractTest(unittest.TestCase):
         dispatcher = (
             ROOT / ".github" / "workflows" / "release-pipeline-test-command.yml"
         ).read_text()
-        report = (ROOT / ".github" / "workflows" / "release-pipeline-tests.yml").read_text()
+        report = (
+            ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
+        ).read_text()
 
         for workflow in (dispatcher, report):
             self.assertIn("if ! gh api --method POST", workflow)
