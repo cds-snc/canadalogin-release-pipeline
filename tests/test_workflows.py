@@ -117,6 +117,22 @@ class WorkflowContractTest(unittest.TestCase):
             workflow.count("      github-environment: acceptance-tests\n"), 3
         )
         self.assertEqual(workflow.count("      create-deployment: false\n"), 3)
+        self.assertIn(
+            "pipeline_id: acceptance-failure-${{ github.run_id }}\n"
+            "      environment: acceptance-failure\n"
+            "      github-environment: acceptance-tests\n"
+            "      create-deployment: false\n"
+            "      expect-health-check-failure: true\n"
+            "      rebuild: true",
+            workflow,
+        )
+        self.assertIn(
+            "          EXPECTED_RESULT: success\n"
+            "          GITHUB_REPOSITORY: ${{ github.repository }}\n"
+            "          GH_TOKEN: ${{ github.token }}\n"
+            "          PIPELINE_RESULT: ${{ needs.failure.result }}",
+            workflow,
+        )
         self.assertNotIn("\n    environment: acceptance-terraform\n", workflow)
         self.assertNotIn("\n    environment: acceptance-standard\n", workflow)
         self.assertNotIn("\n    environment: acceptance-react\n", workflow)
@@ -176,6 +192,45 @@ class WorkflowContractTest(unittest.TestCase):
         )
         self.assertIn(
             "create-deployment: ${{ inputs.create-deployment }}", release_workflow
+        )
+        self.assertIn(
+            "expect-health-check-failure:\n"
+            "        description: Require the health check to fail and treat that failure as expected.\n"
+            "        required: false\n"
+            "        default: false\n"
+            "        type: boolean",
+            release_workflow,
+        )
+        self.assertIn(
+            "expect-health-check-failure: ${{ inputs.expect-health-check-failure }}",
+            release_workflow,
+        )
+        self.assertIn(
+            "expect-health-check-failure:\n"
+            "        description: Require the health check to fail and treat that failure as expected.\n"
+            "        required: false\n"
+            "        default: false\n"
+            "        type: boolean",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "id: health_check\n"
+            "        continue-on-error: ${{ inputs.expect-health-check-failure }}",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "HEALTH_CHECK_OUTCOME: ${{ steps.health_check.outcome }}",
+            deploy_workflow,
+        )
+        self.assertIn("expected_outcome=failure", deploy_workflow)
+        self.assertIn("expected_outcome=success", deploy_workflow)
+        self.assertIn(
+            "if: steps.validate_health_check.outcome == 'success' && steps.health_check.outcome == 'success'",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "if: failure() || steps.health_check.outcome == 'failure' || steps.validate_health_check.outcome == 'failure'",
+            deploy_workflow,
         )
 
     def test_acceptance_comment_dispatch_is_maintainer_gated(self) -> None:

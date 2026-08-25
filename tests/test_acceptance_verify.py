@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -52,6 +53,34 @@ class AcceptanceVerifyTest(unittest.TestCase):
 
         self.assertEqual(aws_json.call_count, 2)
         sleep.assert_called_once_with(5)
+
+    def test_failure_hook_verification_requires_expected_outcome_validation(
+        self,
+    ) -> None:
+        jobs = [
+            {
+                "jobs": [
+                    {
+                        "steps": [
+                            {
+                                "name": "Validate health-check result",
+                                "conclusion": "success",
+                            },
+                            {"name": "Run failure hooks", "conclusion": "success"},
+                        ]
+                    }
+                ]
+            }
+        ]
+
+        with (
+            patch.dict(
+                VERIFY.os.environ,
+                {"GITHUB_REPOSITORY": "example/repository", "RUN_ID": "123"},
+            ),
+            patch.object(VERIFY, "command", return_value=json.dumps(jobs)),
+        ):
+            VERIFY.verify_failure_hook()
 
 
 if __name__ == "__main__":
