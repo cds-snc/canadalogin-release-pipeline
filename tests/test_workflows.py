@@ -115,6 +115,17 @@ class WorkflowContractTest(unittest.TestCase):
             "${{ github.repository_id }}",
             workflow,
         )
+        self.assertIn(
+            "  report:\n"
+            "    name: Report acceptance suite result\n"
+            "    if: always()\n"
+            "    needs: [assert_suite]\n"
+            "    runs-on: ubuntu-latest\n"
+            "    permissions:\n"
+            "      issues: write\n"
+            "      pull-requests: write\n",
+            workflow,
+        )
         self.assertIn("config-path: acceptance/scenarios/standard-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)

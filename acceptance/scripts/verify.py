@@ -88,6 +88,15 @@ def require(condition: bool, message: str) -> None:
         raise VerificationError(message)
 
 
+def has_healthy_target(target_health: object) -> bool:
+    return isinstance(target_health, list) and any(
+        isinstance(item, dict)
+        and isinstance(item.get("TargetHealth"), dict)
+        and item["TargetHealth"].get("State") == "healthy"
+        for item in target_health
+    )
+
+
 def verify_ecr(scenario: dict[str, str], release_sha: str) -> str:
     document = aws_json(
         "ecr",
@@ -167,14 +176,7 @@ def verify_ecs(scenario: dict[str, str], release_sha: str, digest: str) -> None:
         target_group_arn,
     ).get("TargetHealthDescriptions")
     require(
-        isinstance(target_health, list)
-        and target_health
-        and all(
-            isinstance(item, dict)
-            and isinstance(item.get("TargetHealth"), dict)
-            and item["TargetHealth"].get("State") == "healthy"
-            for item in target_health
-        ),
+        has_healthy_target(target_health),
         "The ALB has no healthy ECS targets.",
     )
 

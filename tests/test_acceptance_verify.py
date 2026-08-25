@@ -13,6 +13,19 @@ VERIFY_SPEC.loader.exec_module(VERIFY)
 
 
 class AcceptanceVerifyTest(unittest.TestCase):
+    def test_healthy_target_is_allowed_while_old_target_drains(self) -> None:
+        target_health = [
+            {"TargetHealth": {"State": "draining"}},
+            {"TargetHealth": {"State": "healthy"}},
+        ]
+
+        self.assertTrue(VERIFY.has_healthy_target(target_health))
+
+    def test_all_draining_targets_are_rejected(self) -> None:
+        target_health = [{"TargetHealth": {"State": "draining"}}]
+
+        self.assertFalse(VERIFY.has_healthy_target(target_health))
+
     def test_scenario_uses_full_ecr_uri_for_live_identity_checks(self) -> None:
         scenario = VERIFY.scenario_for_account(
             VERIFY.SCENARIOS["standard-ecs"],
