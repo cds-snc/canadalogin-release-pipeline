@@ -17,8 +17,13 @@ on:
         required: true
         type: string
       environment:
-        description: GitHub environment supplying variables and secrets.
+        description: Logical build environment used by release tooling.
         required: true
+        type: string
+      github-environment:
+        description: GitHub environment supplying variables and secrets.
+        required: false
+        default: ""
         type: string
       target-environment:
         description: Environment whose desired artifact is being built.
@@ -89,7 +94,7 @@ jobs:
     outputs:
       image_uri: ${{ steps.build.outputs.image_uri }}
     environment:
-      name: ${{ inputs.environment }}
+      name: ${{ inputs.github-environment || inputs.environment }}
       deployment: false
     steps:
       - name: Checkout caller repository
@@ -183,7 +188,7 @@ jobs:
       contents: write
       id-token: write
     environment:
-      name: ${{ inputs.environment }}
+      name: ${{ inputs.github-environment || inputs.environment }}
       deployment: false
     steps:
       - name: Checkout caller repository

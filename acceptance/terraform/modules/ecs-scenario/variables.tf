@@ -14,6 +14,10 @@ variable "environment" {
   type = string
 }
 
+variable "github_environment" {
+  type = string
+}
+
 variable "github_repository" {
   type = string
 }

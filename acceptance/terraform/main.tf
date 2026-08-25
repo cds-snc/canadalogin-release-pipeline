@@ -24,7 +24,7 @@ data "aws_iam_policy_document" "terraform_assume_role" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repository}:environment:acceptance-terraform",
+        "repo:${var.github_repository}:environment:acceptance-tests",
       ]
     }
   }
@@ -72,6 +72,7 @@ module "standard" {
   aws_region         = var.aws_region
   app_name           = "cl-acceptance-standard"
   environment        = "acceptance-standard"
+  github_environment = "acceptance-tests"
   github_repository  = var.github_repository
   role_name          = "cl-acceptance-standard-actions"
   ecr_repository     = "cl-acceptance-standard"
@@ -88,6 +89,7 @@ module "react" {
   aws_region         = var.aws_region
   app_name           = "cl-acceptance-react"
   environment        = "acceptance-react"
+  github_environment = "acceptance-tests"
   github_repository  = var.github_repository
   role_name          = "cl-acceptance-react-actions"
   ecr_repository     = "cl-acceptance-react"
@@ -108,6 +110,7 @@ module "failure" {
   aws_region         = var.aws_region
   app_name           = "cl-acceptance-failure"
   environment        = "acceptance-failure"
+  github_environment = "acceptance-tests"
   github_repository  = var.github_repository
   role_name          = "cl-acceptance-failure-actions"
   ecr_repository     = "cl-acceptance-failure"

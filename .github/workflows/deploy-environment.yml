@@ -23,8 +23,13 @@ on:
         default: true
         type: boolean
       environment:
-        description: GitHub environment to deploy.
+        description: Logical environment to deploy.
         required: true
+        type: string
+      github-environment:
+        description: GitHub environment supplying variables and secrets.
+        required: false
+        default: ""
         type: string
       sha:
         description: Desired commit SHA resolved by the planning job.
@@ -73,7 +78,7 @@ jobs:
     concurrency:
       group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ inputs.environment }}
       queue: max
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.github-environment || inputs.environment }}
     steps:
       - name: Checkout caller repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
