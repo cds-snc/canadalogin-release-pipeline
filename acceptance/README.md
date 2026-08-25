@@ -18,7 +18,7 @@ users with `push`, `maintain`, or `admin` repository permission, then dispatches
 
 Before the first run, create the GitHub environment `acceptance-tests`. It does
 not need secrets, but its name is part of the OIDC trust policies for the AWS
-roles.
+roles. Once created, the same environment is reused for every acceptance run.
 
 The suite applies Terraform first, clears scenario state before the run, and
 runs the standard ECS, React plus ECS, and expected health-hook failure
