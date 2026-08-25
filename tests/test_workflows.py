@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import unittest
 from pathlib import Path
@@ -166,7 +167,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn('COMMENT_BODY" != "!test"', workflow)
         self.assertIn('head_repository" != "$REPOSITORY"', workflow)
         self.assertIn('base_branch" != "main"', workflow)
-        self.assertIn("admin|maintain|push)", workflow)
+        self.assertIn("admin|maintain|push|write)", workflow)
         self.assertIn(
             'head_ref="$(jq -r \'.head.ref // ""\' <<<"$pr_json")"',
             workflow,
@@ -181,6 +182,66 @@ class WorkflowContractTest(unittest.TestCase):
         )
         self.assertIn('--input - <<<"$payload"', workflow)
         self.assertNotIn('"inputs=$inputs"', workflow)
+        self.assertNotIn("pull_request_target", workflow)
+
+    def test_release_please_is_standalone_and_starts_at_latest_tag(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
+        config = json.loads((ROOT / "release-please-config.json").read_text())
+        manifest = json.loads((ROOT / ".release-please-manifest.json").read_text())
+
+        self.assertIn("push:\n    branches:\n      - main", workflow)
+        self.assertNotIn("workflow_call", workflow)
+        self.assertIn("CDS_RELEASE_BOT_APP_ID", workflow)
+        self.assertIn("CDS_RELEASE_BOT_PRIVATE_KEY", workflow)
+        self.assertIn("config-file: release-please-config.json", workflow)
+        self.assertIn("manifest-file: .release-please-manifest.json", workflow)
+        self.assertEqual(config["release-type"], "simple")
+        self.assertEqual(list(config["packages"]), ["."])
+        self.assertEqual(manifest, {".": "1.0.12"})
+        self.assertEqual(
+            config["extra-files"],
+            [
+                {
+                    "type": "toml",
+                    "path": "pyproject.toml",
+                    "jsonpath": "$.project.version",
+                }
+            ],
+        )
+
+    def test_acceptance_requires_release_please_metadata_and_reports_status(
+        self,
+    ) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
+        ).read_text()
+        dispatcher = (
+            ROOT / ".github" / "workflows" / "release-pipeline-test-command.yml"
+        ).read_text()
+
+        for candidate in (workflow, dispatcher):
+            self.assertIn("release-please--branches--main", candidate)
+            self.assertIn("autorelease: pending", candidate)
+            self.assertIn('author_type" != "Bot"', candidate)
+        self.assertIn("statuses: write", workflow)
+        self.assertIn("context=release-pipeline-acceptance", workflow)
+        self.assertIn("context=release-pipeline-acceptance", dispatcher)
+        self.assertIn("required: true\n        type: string", workflow)
+        self.assertIn("WORKFLOW_SHA", workflow)
+        self.assertIn('$head_sha" != "$RELEASE_SHA"', workflow)
+
+    def test_acceptance_gate_is_safe_and_requires_success_for_release_prs(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "release-pipeline-acceptance-gate.yml"
+        ).read_text()
+
+        self.assertIn("pull_request:", workflow)
+        self.assertIn("status:", workflow)
+        self.assertIn("statuses: read", workflow)
+        self.assertIn("release-pipeline-acceptance", workflow)
+        self.assertIn("acceptance_state", workflow)
+        self.assertIn('acceptance_state" != success', workflow)
+        self.assertNotIn("id-token:", workflow)
         self.assertNotIn("pull_request_target", workflow)
 
 
