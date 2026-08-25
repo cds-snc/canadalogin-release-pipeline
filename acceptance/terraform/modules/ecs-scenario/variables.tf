@@ -18,7 +18,7 @@ variable "github_environment" {
   type = string
 }
 
-variable "github_repository" {
+variable "github_oidc_subject_prefix" {
   type = string
 }
 

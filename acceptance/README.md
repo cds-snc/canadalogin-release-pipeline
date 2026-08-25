@@ -18,7 +18,8 @@ users with `push`, `maintain`, or `admin` repository permission, then dispatches
 
 Before the first run, create the GitHub environment `acceptance-tests`. It does
 not need secrets, but its name is part of the OIDC trust policies for the AWS
-roles.
+roles. The trust policies also use GitHub's immutable repository owner and
+repository IDs, which the workflow passes to Terraform from the GitHub context.
 
 The suite applies Terraform first, clears scenario state before the run, and
 runs the standard ECS, React plus ECS, and expected health-hook failure

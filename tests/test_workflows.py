@@ -109,6 +109,12 @@ class WorkflowContractTest(unittest.TestCase):
             "  pull-requests: write\n",
             workflow,
         )
+        self.assertIn(
+            "TF_VAR_github_oidc_subject_prefix: repo:${{ github.repository_owner }}@"
+            "${{ github.repository_owner_id }}/${{ github.event.repository.name }}@"
+            "${{ github.repository_id }}",
+            workflow,
+        )
         self.assertIn("config-path: acceptance/scenarios/standard-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)

@@ -10,8 +10,8 @@ variable "aws_region" {
   default     = "ca-central-1"
 }
 
-variable "github_repository" {
-  description = "Repository allowed to assume the acceptance roles."
+variable "github_oidc_subject_prefix" {
+  description = "Immutable GitHub OIDC subject prefix allowed to assume the acceptance roles."
   type        = string
-  default     = "cds-snc/canadalogin-release-system"
+  default     = "repo:cds-snc@30166251/canadalogin-release-system@1337624227"
 }
