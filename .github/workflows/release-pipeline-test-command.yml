@@ -33,6 +33,7 @@ jobs:
 
           pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
           head_repository="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
+          head_ref="$(jq -r '.head.ref // ""' <<<"$pr_json")"
           head_sha="$(jq -r '.head.sha // ""' <<<"$pr_json")"
           base_branch="$(jq -r '.base.ref // ""' <<<"$pr_json")"
           pr_state="$(jq -r '.state // ""' <<<"$pr_json")"
@@ -41,7 +42,7 @@ jobs:
             printf '%s\n' 'Acceptance tests only run for branches in the release repository.' >&2
             exit 1
           fi
-          if [[ "$base_branch" != "main" || "$pr_state" != "open" || -z "$head_sha" ]]; then
+          if [[ "$base_branch" != "main" || "$pr_state" != "open" || -z "$head_ref" || -z "$head_sha" ]]; then
             printf '%s\n' 'Acceptance tests require an open pull request targeting main.' >&2
             exit 1
           fi
@@ -57,7 +58,7 @@ jobs:
           esac
 
           payload="$(jq -cn \
-            --arg ref "$head_sha" \
+            --arg ref "$head_ref" \
             --arg sha "$head_sha" \
             --arg pr "$PR_NUMBER" \
             '{ref:$ref,inputs:{"release-sha":$sha,"pull-request-number":$pr}}')"
