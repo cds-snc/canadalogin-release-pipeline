@@ -60,6 +60,11 @@ flowchart TD
 
 Every required build must pass before any environment begins deployment. Components for one environment run in one job, and at most one environment job runs at a time. GitHub does not guarantee matrix ordering, so each environment independently reconciles its pinned desired version. This removes the current frontend-build/backend-deploy split-state failure mode and creates a clear boundary for future rollback work.
 
+Only release-please pull requests require the integration acceptance suite. A
+write-level repository user can request it by commenting `!test`; the request
+starts the manually triggered acceptance workflow, and the release pull request
+remains blocked until the `Release pipeline acceptance gate` succeeds.
+
 ## Configuration examples
 
 - [Manage application](examples/gc-signin-user-selfservice-webapp/release-pipeline-configuration.yml)
