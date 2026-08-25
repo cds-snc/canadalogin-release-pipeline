@@ -108,6 +108,11 @@ jobs:
           TF_STATE_LOCK_TABLE: cl-acceptance-tfstate-lock-${{ inputs.aws-account-id }}
         run: ./acceptance/scripts/bootstrap-terraform-state.sh
 
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.9.4
+
       - name: Format and initialize Terraform
         env:
           AWS_REGION: ${{ inputs.aws-region }}
@@ -127,7 +132,7 @@ jobs:
           AWS_REGION: ${{ inputs.aws-region }}
           TF_VAR_aws_account_id: ${{ inputs.aws-account-id }}
           TF_VAR_aws_region: ${{ inputs.aws-region }}
-          TF_VAR_github_repository: ${{ github.repository }}
+          TF_VAR_github_oidc_subject_prefix: repo:${{ github.repository_owner }}@${{ github.repository_owner_id }}/${{ github.event.repository.name }}@${{ github.repository_id }}
         run: terraform -chdir=acceptance/terraform apply -input=false -auto-approve
 
   prepare_standard:
