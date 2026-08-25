@@ -208,6 +208,8 @@ resource "aws_iam_role" "github_actions" {
 }
 
 locals {
+  ecs_service_arn         = "arn:aws:ecs:${var.aws_region}:${var.account_id}:service/${var.cluster_name}/${var.service_name}"
+  ecs_task_definition_arn = "arn:aws:ecs:${var.aws_region}:${var.account_id}:task-definition/${var.app_name}:*"
   site_bucket_arns = [
     for bucket in values(aws_s3_bucket.site) : bucket.arn
   ]
@@ -244,23 +246,34 @@ data "aws_iam_policy_document" "github_actions" {
   }
 
   statement {
-    sid    = "EcsReadAndDeploy"
+    sid    = "EcsServiceReadAndDeploy"
     effect = "Allow"
     actions = [
-      "ecs:DescribeClusters",
       "ecs:DescribeServices",
-      "ecs:DescribeTaskDefinition",
-      "ecs:DescribeTasks",
-      "ecs:ListTasks",
-      "ecs:RegisterTaskDefinition",
-      "ecs:TagResource",
       "ecs:UpdateService",
     ]
-    resources = [
-      aws_ecs_cluster.app.arn,
-      "arn:aws:ecs:${var.aws_region}:${var.account_id}:service/${var.cluster_name}/${var.service_name}",
-      "*",
-    ]
+    resources = [local.ecs_service_arn]
+  }
+
+  statement {
+    sid       = "EcsTaskDefinitionRead"
+    effect    = "Allow"
+    actions   = ["ecs:DescribeTaskDefinition"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "EcsTaskDefinitionTag"
+    effect    = "Allow"
+    actions   = ["ecs:TagResource"]
+    resources = [local.ecs_task_definition_arn, local.ecs_service_arn]
+  }
+
+  statement {
+    sid       = "EcsTaskDefinitionRegister"
+    effect    = "Allow"
+    actions   = ["ecs:RegisterTaskDefinition"]
+    resources = ["*"]
   }
 
   statement {

@@ -56,11 +56,15 @@ jobs:
               ;;
           esac
 
-          inputs="$(jq -cn --arg sha "$head_sha" --arg pr "$PR_NUMBER" '{"release-sha":$sha,"pull-request-number":$pr}')"
+          payload="$(jq -cn \
+            --arg ref "$head_sha" \
+            --arg sha "$head_sha" \
+            --arg pr "$PR_NUMBER" \
+            '{ref:$ref,inputs:{"release-sha":$sha,"pull-request-number":$pr}}')"
           gh api --method POST \
             "repos/$REPOSITORY/actions/workflows/release-pipeline-tests.yml/dispatches" \
-            -f "ref=$head_sha" \
-            -F "inputs=$inputs"
+            -H 'Content-Type: application/json' \
+            --input - <<<"$payload"
 
           workflow_url="$SERVER_URL/$REPOSITORY/actions/workflows/release-pipeline-tests.yml"
           gh api --method POST \

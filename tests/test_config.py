@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig, ValueReference
+from canadalogin_release.runtime import RuntimeContext, resolve_reference
 
 BASE_CONFIG = """
 schema_version: 1
@@ -147,6 +150,29 @@ class PipelineConfigTest(unittest.TestCase):
         )
 
         self.assertEqual(reference.resolve({}), "fallback")
+
+    def test_resolves_aws_template_values(self) -> None:
+        reference = ValueReference.parse(
+            "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/example",
+            "build.repository",
+        )
+        context = RuntimeContext.create(
+            repository=".",
+            environment="dev",
+            sha="abc123",
+            release_tag=None,
+            github_ref="",
+            secrets={},
+        )
+
+        with patch.dict(
+            os.environ,
+            {"AWS_ACCOUNT_ID": "123456789012", "AWS_REGION": "us-east-1"},
+        ):
+            self.assertEqual(
+                resolve_reference(reference, context),
+                "123456789012.dkr.ecr.us-east-1.amazonaws.com/example",
+            )
 
     def test_rejects_unknown_configuration_key(self) -> None:
         with self.assertRaisesRegex(ConfigError, "unknown keys: applicaton"):

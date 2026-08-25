@@ -107,6 +107,8 @@ jobs:
 
       - name: Run before-deploy hooks
         env: &hook-environment
+          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ inputs.aws-region }}
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           RELEASE_FORCE_REDEPLOY: ${{ inputs.force-redeploy }}
@@ -128,6 +130,8 @@ jobs:
       - name: Preflight S3 artifacts
         if: inputs.s3-role != ''
         env: &deployment-environment
+          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ inputs.aws-region }}
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           RELEASE_FORCE_REDEPLOY: ${{ inputs.force-redeploy }}

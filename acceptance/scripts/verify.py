@@ -9,6 +9,9 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
+DEFAULT_AWS_ACCOUNT_ID = "014097726303"
+DEFAULT_AWS_REGION = "ca-central-1"
+
 
 SCENARIOS = {
     "standard-ecs": {
@@ -24,8 +27,8 @@ SCENARIOS = {
         "cluster": "cl-acceptance-react",
         "service": "cl-acceptance-react-app",
         "ssm_parameter": "/release-pipeline-acceptance/react-ecs/container-image",
-        "site_bucket": "cl-acceptance-react-site-014097726303",
-        "artifact_bucket": "cl-acceptance-react-artifacts-014097726303",
+        "site_bucket": "cl-acceptance-react-site-{aws_account_id}",
+        "artifact_bucket": "cl-acceptance-react-artifacts-{aws_account_id}",
     },
     "failure-ecs": {
         "app_name": "cl-acceptance-failure",
@@ -39,6 +42,19 @@ SCENARIOS = {
 
 class VerificationError(RuntimeError):
     pass
+
+
+def scenario_for_account(
+    scenario: dict[str, str], account_id: str, region: str
+) -> dict[str, str]:
+    resolved = {
+        name: value.format(aws_account_id=account_id)
+        for name, value in scenario.items()
+    }
+    resolved["ecr_uri"] = (
+        f"{account_id}.dkr.ecr.{region}.amazonaws.com/{resolved['ecr_repository']}"
+    )
+    return resolved
 
 
 def command(arguments: list[str]) -> str:
@@ -129,7 +145,7 @@ def verify_ecs(scenario: dict[str, str], release_sha: str, digest: str) -> None:
     app_containers = [item for item in containers if isinstance(item, dict) and item.get("name") == "app"]
     require(len(app_containers) == 1, "The ECS task definition has no unique app container.")
     require(
-        app_containers[0].get("image") == f"{scenario['ecr_repository']}@{digest}",
+        app_containers[0].get("image") == f"{scenario['ecr_uri']}@{digest}",
         "The ECS task definition is not pinned to the verified ECR digest.",
     )
 
@@ -166,7 +182,7 @@ def verify_ecs(scenario: dict[str, str], release_sha: str, digest: str) -> None:
     parameter_value = parameter.get("Parameter", {})
     require(
         isinstance(parameter_value, dict)
-        and parameter_value.get("Value") == f"{scenario['ecr_repository']}:{release_sha}",
+        and parameter_value.get("Value") == f"{scenario['ecr_uri']}:{release_sha}",
         "The ECS SSM image pointer does not identify the tested release.",
     )
 
@@ -249,9 +265,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--scenario", choices=sorted(SCENARIOS), required=True)
     scenario_name = parser.parse_args().scenario
-    scenario = SCENARIOS.get(scenario_name)
-    if scenario is None:
-        raise VerificationError(f"Unknown scenario {scenario_name!r}")
+    account_id = os.environ.get("AWS_ACCOUNT_ID") or DEFAULT_AWS_ACCOUNT_ID
+    region = (
+        os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or DEFAULT_AWS_REGION
+    )
+    scenario = scenario_for_account(SCENARIOS[scenario_name], account_id, region)
 
     release_sha = os.environ.get("RELEASE_SHA", "")
     expected_result = os.environ.get("EXPECTED_RESULT", "")

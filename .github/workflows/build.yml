@@ -130,6 +130,8 @@ jobs:
       - name: Build and publish artifact
         id: build
         env:
+          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ inputs.aws-region }}
           BUILD_ENVIRONMENT: ${{ inputs.environment }}
           BUILD_NAME: ${{ inputs.name }}
           CONFIG_PATH: ${{ inputs.config-path }}

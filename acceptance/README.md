@@ -4,10 +4,10 @@ The acceptance suite runs the release pipeline at one explicit commit. It is
 intentionally opt-in because it builds and deploys real artifacts to the
 scratch AWS account.
 
-The checked-in fixtures currently target account `014097726303` in
-`ca-central-1`. The dispatch inputs expose account and region values for future
-reuse, but changing them requires updating the literal ECR and S3 names in the
-scenario configurations and verifier together.
+The checked-in fixtures default to account `014097726303` in `ca-central-1`.
+The dispatch account and region inputs are passed through to Terraform, AWS
+credentials, artifact URIs, and live verification, so a dedicated account and
+region can be selected without changing the fixtures.
 
 ## Run from a release PR
 
@@ -15,6 +15,11 @@ Comment exactly `!test` on an open pull request in
 `cds-snc/canadalogin-release-system`. The comment workflow accepts requests from
 users with `push`, `maintain`, or `admin` repository permission, then dispatches
 `release-pipeline-tests.yml` at the pull request head SHA.
+
+Before the first run, create the GitHub environments
+`acceptance-terraform`, `acceptance-standard`, `acceptance-react`, and
+`acceptance-failure`. They do not need secrets, but their names are part of the
+OIDC trust policies for the AWS roles.
 
 The suite applies Terraform first, clears scenario state before the run, and
 runs the standard ECS, React plus ECS, and expected health-hook failure

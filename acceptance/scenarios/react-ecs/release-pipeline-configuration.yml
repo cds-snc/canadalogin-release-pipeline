@@ -26,7 +26,7 @@ builds:
     s3_artifact:
       source: acceptance/apps/react-ecs/frontend/dist
       bucket:
-        value: cl-acceptance-react-artifacts-014097726303
+        value: "cl-acceptance-react-artifacts-{aws_account_id}"
       prefix: "{sha}"
       delete: true
 
@@ -38,7 +38,7 @@ builds:
       context: acceptance/apps/react-ecs/backend
       dockerfile: acceptance/apps/react-ecs/backend/Dockerfile
       repository:
-        value: 014097726303.dkr.ecr.ca-central-1.amazonaws.com/cl-acceptance-react
+        value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-react"
       tags: [sha]
       build_args:
         APP_VERSION: "{release_version}"
@@ -49,11 +49,11 @@ deployments:
     environments: [acceptance-react]
     aws_role: cl-acceptance-react-actions
     artifact_bucket:
-      value: cl-acceptance-react-artifacts-014097726303
+      value: "cl-acceptance-react-artifacts-{aws_account_id}"
     artifact_prefix: "{sha}"
     targets:
       - bucket:
-          value: cl-acceptance-react-site-014097726303
+          value: "cl-acceptance-react-site-{aws_account_id}"
         delete: true
 
   - name: backend
@@ -61,7 +61,7 @@ deployments:
     environments: [acceptance-react]
     aws_role: cl-acceptance-react-actions
     repository:
-      value: 014097726303.dkr.ecr.ca-central-1.amazonaws.com/cl-acceptance-react
+      value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-react"
     services:
       - cluster:
           value: cl-acceptance-react

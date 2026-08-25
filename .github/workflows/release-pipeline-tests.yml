@@ -176,6 +176,7 @@ jobs:
     with:
       config-path: acceptance/scenarios/standard-ecs/release-pipeline-configuration.yml
       aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region }}
       pipeline_id: acceptance-standard-${{ github.run_id }}
       environment: acceptance-standard
       rebuild: true
@@ -188,6 +189,7 @@ jobs:
     with:
       config-path: acceptance/scenarios/react-ecs/release-pipeline-configuration.yml
       aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region }}
       pipeline_id: acceptance-react-${{ github.run_id }}
       environment: acceptance-react
       rebuild: true
@@ -200,6 +202,7 @@ jobs:
     with:
       config-path: acceptance/scenarios/failure-ecs/release-pipeline-configuration.yml
       aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region }}
       pipeline_id: acceptance-failure-${{ github.run_id }}
       environment: acceptance-failure
       rebuild: true
@@ -231,6 +234,8 @@ jobs:
 
       - name: Verify workflow and AWS state
         env:
+          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id }}
+          AWS_REGION: ${{ inputs.aws-region }}
           EXPECTED_RESULT: success
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -265,6 +270,8 @@ jobs:
 
       - name: Verify workflow and AWS state
         env:
+          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id }}
+          AWS_REGION: ${{ inputs.aws-region }}
           EXPECTED_RESULT: success
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -299,6 +306,8 @@ jobs:
 
       - name: Verify expected failure and AWS state
         env:
+          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id }}
+          AWS_REGION: ${{ inputs.aws-region }}
           EXPECTED_RESULT: failure
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}

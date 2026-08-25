@@ -19,7 +19,7 @@ builds:
       context: acceptance/apps/failure-ecs
       dockerfile: acceptance/apps/failure-ecs/Dockerfile
       repository:
-        value: 014097726303.dkr.ecr.ca-central-1.amazonaws.com/cl-acceptance-failure
+        value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-failure"
       tags: [sha]
       build_args:
         APP_VERSION: "{release_version}"
@@ -30,7 +30,7 @@ deployments:
     environments: [acceptance-failure]
     aws_role: cl-acceptance-failure-actions
     repository:
-      value: 014097726303.dkr.ecr.ca-central-1.amazonaws.com/cl-acceptance-failure
+      value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-failure"
     services:
       - cluster:
           value: cl-acceptance-failure

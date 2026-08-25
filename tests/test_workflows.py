@@ -50,6 +50,9 @@ class WorkflowContractTest(unittest.TestCase):
             workflow,
         )
         self.assertIn("pipeline_id: ${{ inputs.pipeline_id }}", workflow)
+        self.assertIn(
+            "aws-region: ${{ inputs.aws-region || matrix.aws_region }}", workflow
+        )
 
     def test_environment_deployments_share_the_pipeline_concurrency_namespace(
         self,
@@ -101,6 +104,22 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)
         self.assertEqual(workflow.count("pipeline_id: acceptance-"), 3)
+        for scenario in ("standard-ecs", "react-ecs", "failure-ecs"):
+            self.assertIn(
+                "config-path: acceptance/scenarios/"
+                f"{scenario}/release-pipeline-configuration.yml\n"
+                "      aws-account-id: ${{ inputs.aws-account-id }}\n"
+                "      aws-region: ${{ inputs.aws-region }}",
+                workflow,
+            )
+        self.assertEqual(
+            workflow.count(
+                "        env:\n"
+                "          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id }}\n"
+                "          AWS_REGION: ${{ inputs.aws-region }}\n"
+            ),
+            3,
+        )
         self.assertIn(
             "needs: [prepare_standard, prepare_react, prepare_failure]", workflow
         )
@@ -122,6 +141,11 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn(
             "actions/workflows/release-pipeline-tests.yml/dispatches", workflow
         )
+        self.assertIn(
+            '{ref:$ref,inputs:{"release-sha":$sha,"pull-request-number":$pr}}', workflow
+        )
+        self.assertIn('--input - <<<"$payload"', workflow)
+        self.assertNotIn('"inputs=$inputs"', workflow)
         self.assertNotIn("pull_request_target", workflow)
 
 
