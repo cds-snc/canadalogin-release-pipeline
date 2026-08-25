@@ -105,10 +105,18 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)
         self.assertEqual(workflow.count("pipeline_id: acceptance-"), 3)
-        self.assertIn("    environment: acceptance-tests\n", workflow)
+        self.assertEqual(
+            workflow.count(
+                "    environment:\n"
+                "      name: acceptance-tests\n"
+                "      deployment: false\n"
+            ),
+            7,
+        )
         self.assertEqual(
             workflow.count("      github-environment: acceptance-tests\n"), 3
         )
+        self.assertEqual(workflow.count("      create-deployment: false\n"), 3)
         self.assertNotIn("\n    environment: acceptance-terraform\n", workflow)
         self.assertNotIn("\n    environment: acceptance-standard\n", workflow)
         self.assertNotIn("\n    environment: acceptance-react\n", workflow)
@@ -153,8 +161,21 @@ class WorkflowContractTest(unittest.TestCase):
             ROOT / ".github" / "workflows" / "deploy-environment.yml"
         ).read_text()
         self.assertIn(
-            "environment: ${{ inputs.github-environment || inputs.environment }}",
+            "create-deployment:\n"
+            "        description: Create a GitHub deployment record for the environment.\n"
+            "        required: false\n"
+            "        default: true\n"
+            "        type: boolean",
             deploy_workflow,
+        )
+        self.assertIn(
+            "environment:\n"
+            "      name: ${{ inputs.github-environment || inputs.environment }}\n"
+            "      deployment: ${{ inputs.create-deployment }}",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "create-deployment: ${{ inputs.create-deployment }}", release_workflow
         )
 
     def test_acceptance_comment_dispatch_is_maintainer_gated(self) -> None:
@@ -184,7 +205,30 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn('"inputs=$inputs"', workflow)
         self.assertNotIn("pull_request_target", workflow)
 
-    def test_release_please_is_standalone_and_starts_at_latest_tag(self) -> None:
+    def test_acceptance_comments_are_optional_after_status_updates(self) -> None:
+        dispatcher = (
+            ROOT / ".github" / "workflows" / "release-pipeline-test-command.yml"
+        ).read_text()
+        report = (
+            ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
+        ).read_text()
+
+        for workflow in (dispatcher, report):
+            self.assertIn("if ! gh api --method POST", workflow)
+            self.assertIn("issues/$PR_NUMBER/comments", workflow)
+            self.assertIn("could not be posted", workflow)
+
+    def test_acceptance_preparation_waits_for_ecs_stability(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
+        ).read_text()
+
+        self.assertEqual(workflow.count("aws ecs wait services-stable"), 3)
+        for scenario in ("standard", "react", "failure"):
+            self.assertIn(f"--cluster cl-acceptance-{scenario}", workflow)
+            self.assertIn(f"--services cl-acceptance-{scenario}-app", workflow)
+
+    def test_release_please_is_standalone_and_uses_version_manifest(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
         config = json.loads((ROOT / "release-please-config.json").read_text())
         manifest = json.loads((ROOT / ".release-please-manifest.json").read_text())
@@ -197,7 +241,8 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("manifest-file: .release-please-manifest.json", workflow)
         self.assertEqual(config["release-type"], "simple")
         self.assertEqual(list(config["packages"]), ["."])
-        self.assertEqual(manifest, {".": "1.0.12"})
+        self.assertEqual(list(manifest), ["."])
+        self.assertRegex(manifest["."], r"^\d+\.\d+\.\d+$")
         self.assertEqual(
             config["extra-files"],
             [

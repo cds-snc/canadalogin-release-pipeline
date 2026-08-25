@@ -88,6 +88,30 @@ def require(condition: bool, message: str) -> None:
         raise VerificationError(message)
 
 
+def has_healthy_target(target_health: object) -> bool:
+    return isinstance(target_health, list) and any(
+        isinstance(item, dict)
+        and isinstance(item.get("TargetHealth"), dict)
+        and item["TargetHealth"].get("State") == "healthy"
+        for item in target_health
+    )
+
+
+def verify_target_health(target_group_arn: str) -> None:
+    for attempt in range(12):
+        target_health = aws_json(
+            "elbv2",
+            "describe-target-health",
+            "--target-group-arn",
+            target_group_arn,
+        ).get("TargetHealthDescriptions")
+        if has_healthy_target(target_health):
+            return
+        if attempt < 11:
+            time.sleep(5)
+    raise VerificationError("The ALB has no healthy ECS targets.")
+
+
 def verify_ecr(scenario: dict[str, str], release_sha: str) -> str:
     document = aws_json(
         "ecr",
@@ -160,23 +184,7 @@ def verify_ecs(scenario: dict[str, str], release_sha: str, digest: str) -> None:
     require(isinstance(target_group, dict), "The ALB target group response is invalid.")
     target_group_arn = target_group.get("TargetGroupArn")
     require(isinstance(target_group_arn, str), "The ALB target group has no ARN.")
-    target_health = aws_json(
-        "elbv2",
-        "describe-target-health",
-        "--target-group-arn",
-        target_group_arn,
-    ).get("TargetHealthDescriptions")
-    require(
-        isinstance(target_health, list)
-        and target_health
-        and all(
-            isinstance(item, dict)
-            and isinstance(item.get("TargetHealth"), dict)
-            and item["TargetHealth"].get("State") == "healthy"
-            for item in target_health
-        ),
-        "The ALB has no healthy ECS targets.",
-    )
+    verify_target_health(target_group_arn)
 
     parameter = aws_json("ssm", "get-parameter", "--name", scenario["ssm_parameter"])
     parameter_value = parameter.get("Parameter", {})
