@@ -1,0 +1,78 @@
+name: Release pipeline acceptance gate
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, reopened, synchronize]
+  status:
+  workflow_run:
+    workflows: ["Release pipeline acceptance tests"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: read
+
+jobs:
+  gate:
+    name: Release pipeline acceptance gate
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'status' && github.event.context == 'release-pipeline-acceptance') ||
+      github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require acceptance for release-please pull requests
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          STATUS_CONTEXT: ${{ github.event.context }}
+          STATUS_SHA: ${{ github.event.sha }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == status ]]; then
+            if [[ "$STATUS_CONTEXT" != "release-pipeline-acceptance" || -z "$STATUS_SHA" ]]; then
+              exit 0
+            fi
+
+            lookup_sha="$STATUS_SHA"
+          elif [[ "$EVENT_NAME" == workflow_run ]]; then
+            lookup_sha="$WORKFLOW_RUN_SHA"
+          else
+            pr_number="$PULL_REQUEST_NUMBER"
+          fi
+
+          if [[ -z "${pr_number:-}" ]]; then
+            if [[ -z "${lookup_sha:-}" ]]; then
+              exit 0
+            fi
+            prs_json="$(gh api "repos/$REPOSITORY/commits/$lookup_sha/pulls")"
+            pr_number="$(jq -r --arg repository "$REPOSITORY" 'map(select(.state == "open" and .base.ref == "main" and .base.repo.full_name == $repository)) | .[0].number // empty' <<<"$prs_json")"
+            if [[ -z "$pr_number" ]]; then
+              exit 0
+            fi
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+          head_repository="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
+          head_ref="$(jq -r '.head.ref // ""' <<<"$pr_json")"
+          head_sha="$(jq -r '.head.sha // ""' <<<"$pr_json")"
+          base_branch="$(jq -r '.base.ref // ""' <<<"$pr_json")"
+          pr_state="$(jq -r '.state // ""' <<<"$pr_json")"
+          author_type="$(jq -r '.user.type // ""' <<<"$pr_json")"
+
+          if [[ "$head_repository" != "$REPOSITORY" || "$base_branch" != "main" || "$pr_state" != "open" || "$head_ref" != "release-please--branches--main" || "$author_type" != "Bot" ]]; then
+            printf '%s\n' 'Acceptance is not required for this pull request.'
+            exit 0
+          fi
+
+          statuses_json="$(gh api "repos/$REPOSITORY/commits/$head_sha/statuses?per_page=100")"
+          acceptance_state="$(jq -r '[.[] | select(.context == "release-pipeline-acceptance")] | .[0].state // "missing"' <<<"$statuses_json")"
+          if [[ "$acceptance_state" != success ]]; then
+            printf 'Release pipeline acceptance status is %s for %s.\n' "$acceptance_state" "$head_sha" >&2
+            exit 1
+          fi

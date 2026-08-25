@@ -9,8 +9,7 @@ on:
         type: string
       pull-request-number:
         description: Pull request to update when the suite completes.
-        required: false
-        default: ""
+        required: true
         type: string
       aws-account-id:
         description: Scratch AWS account used by the acceptance infrastructure.
@@ -32,10 +31,54 @@ permissions:
   contents: read
   id-token: write
   issues: write
+  pull-requests: read
+  statuses: write
 
 jobs:
+  validate_request:
+    name: Validate release pull request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Validate release-please pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull-request-number }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.ref_name }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          head_repository="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
+          head_ref="$(jq -r '.head.ref // ""' <<<"$pr_json")"
+          head_sha="$(jq -r '.head.sha // ""' <<<"$pr_json")"
+          base_branch="$(jq -r '.base.ref // ""' <<<"$pr_json")"
+          pr_state="$(jq -r '.state // ""' <<<"$pr_json")"
+          author_type="$(jq -r '.user.type // ""' <<<"$pr_json")"
+          release_label="$(jq -r '[.labels[]?.name] | index("autorelease: pending") // empty' <<<"$pr_json")"
+
+          if [[ "$head_repository" != "$REPOSITORY" || "$base_branch" != "main" || "$pr_state" != "open" ]]; then
+            printf '%s\n' 'Acceptance tests require an open pull request in the release repository targeting main.' >&2
+            exit 1
+          fi
+          if [[ "$head_ref" != "release-please--branches--main" || "$author_type" != "Bot" || -z "$release_label" ]]; then
+            printf '%s\n' 'Acceptance tests only run for release-please pull requests.' >&2
+            exit 1
+          fi
+          if [[ "$head_sha" != "$RELEASE_SHA" || "$WORKFLOW_SHA" != "$RELEASE_SHA" || "$WORKFLOW_REF" != "$head_ref" ]]; then
+            printf '%s\n' 'The requested SHA is not the current release-please pull request head.' >&2
+            exit 1
+          fi
+
   terraform:
     name: Apply acceptance infrastructure
+    needs: validate_request
+    if: needs.validate_request.result == 'success'
     runs-on: ubuntu-latest
     environment: acceptance-tests
     steps:
@@ -213,7 +256,7 @@ jobs:
 
   verify_standard:
     name: Verify standard ECS state
-    if: always()
+    if: always() && needs.standard.result != 'skipped'
     needs: [standard]
     runs-on: ubuntu-latest
     environment: acceptance-tests
@@ -249,7 +292,7 @@ jobs:
 
   verify_react:
     name: Verify React ECS state
-    if: always()
+    if: always() && needs.react.result != 'skipped'
     needs: [react]
     runs-on: ubuntu-latest
     environment: acceptance-tests
@@ -285,7 +328,7 @@ jobs:
 
   verify_failure:
     name: Verify expected failure state
-    if: always()
+    if: always() && needs.failure.result != 'skipped'
     needs: [failure]
     runs-on: ubuntu-latest
     environment: acceptance-tests
@@ -339,17 +382,43 @@ jobs:
   report:
     name: Report acceptance suite result
     if: always()
-    needs: [assert_suite]
+    needs: [validate_request, assert_suite]
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       issues: write
+      statuses: write
     steps:
+      - name: Publish acceptance status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          REPOSITORY: ${{ github.repository }}
+          VALIDATION_RESULT: ${{ needs.validate_request.result }}
+          SUITE_RESULT: ${{ needs.assert_suite.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$VALIDATION_RESULT" == success && "$SUITE_RESULT" == success ]]; then
+            state=success
+            description='Release pipeline acceptance tests passed.'
+          else
+            state=failure
+            description='Release pipeline acceptance tests failed.'
+          fi
+
+          gh api --method POST "repos/$REPOSITORY/statuses/$RELEASE_SHA" \
+            -f state="$state" \
+            -f context=release-pipeline-acceptance \
+            -f description="$description" \
+            -f target_url="$RUN_URL"
+
       - name: Comment on the release pull request
-        if: inputs.pull-request-number != ''
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pull-request-number }}
           REPOSITORY: ${{ github.repository }}
-          RESULT: ${{ needs.assert_suite.result }}
+          RESULT: ${{ needs.validate_request.result == 'success' && needs.assert_suite.result == 'success' && 'passed' || 'failed' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Release pipeline acceptance tests $RESULT. $RUN_URL"

@@ -9,6 +9,7 @@ permissions:
   contents: read
   issues: write
   pull-requests: read
+  statuses: write
 
 jobs:
   dispatch:
@@ -37,6 +38,8 @@ jobs:
           head_sha="$(jq -r '.head.sha // ""' <<<"$pr_json")"
           base_branch="$(jq -r '.base.ref // ""' <<<"$pr_json")"
           pr_state="$(jq -r '.state // ""' <<<"$pr_json")"
+          author_type="$(jq -r '.user.type // ""' <<<"$pr_json")"
+          release_label="$(jq -r '[.labels[]?.name] | index("autorelease: pending") // empty' <<<"$pr_json")"
 
           if [[ "$head_repository" != "$REPOSITORY" ]]; then
             printf '%s\n' 'Acceptance tests only run for branches in the release repository.' >&2
@@ -46,10 +49,14 @@ jobs:
             printf '%s\n' 'Acceptance tests require an open pull request targeting main.' >&2
             exit 1
           fi
+          if [[ "$head_ref" != "release-please--branches--main" || "$author_type" != "Bot" || -z "$release_label" ]]; then
+            printf '%s\n' 'Acceptance tests only run for release-please pull requests.' >&2
+            exit 1
+          fi
 
           permission="$(gh api "repos/$REPOSITORY/collaborators/$COMMENTER/permission" --jq '.permission' 2>/dev/null || printf '%s' none)"
           case "$permission" in
-            admin|maintain|push)
+            admin|maintain|push|write)
               ;;
             *)
               printf 'Commenter %s does not have permission to request acceptance tests.\n' "$COMMENTER" >&2
@@ -57,17 +64,33 @@ jobs:
               ;;
           esac
 
+          workflow_url="$SERVER_URL/$REPOSITORY/actions/workflows/release-pipeline-tests.yml"
+          if ! gh api --method POST "repos/$REPOSITORY/statuses/$head_sha" \
+            -f state=pending \
+            -f context=release-pipeline-acceptance \
+            -f description='Release pipeline acceptance tests are running.' \
+            -f target_url="$workflow_url"; then
+            printf '%s\n' 'Could not publish the pending acceptance status.' >&2
+            exit 1
+          fi
+
           payload="$(jq -cn \
             --arg ref "$head_ref" \
             --arg sha "$head_sha" \
             --arg pr "$PR_NUMBER" \
             '{ref:$ref,inputs:{"release-sha":$sha,"pull-request-number":$pr}}')"
-          gh api --method POST \
+          if ! gh api --method POST \
             "repos/$REPOSITORY/actions/workflows/release-pipeline-tests.yml/dispatches" \
             -H 'Content-Type: application/json' \
-            --input - <<<"$payload"
+            --input - <<<"$payload"; then
+            gh api --method POST "repos/$REPOSITORY/statuses/$head_sha" \
+              -f state=failure \
+              -f context=release-pipeline-acceptance \
+              -f description='Acceptance test dispatch failed.' \
+              -f target_url="$workflow_url" || true
+            exit 1
+          fi
 
-          workflow_url="$SERVER_URL/$REPOSITORY/actions/workflows/release-pipeline-tests.yml"
           gh api --method POST \
             "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
             -f "body=Release pipeline acceptance tests dispatched for $head_sha. $workflow_url"
