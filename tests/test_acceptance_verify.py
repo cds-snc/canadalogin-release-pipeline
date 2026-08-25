@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 VERIFY_PATH = Path(__file__).parents[1] / "acceptance" / "scripts" / "verify.py"
 VERIFY_SPEC = importlib.util.spec_from_file_location("acceptance_verify", VERIFY_PATH)
@@ -24,6 +25,33 @@ class AcceptanceVerifyTest(unittest.TestCase):
             scenario["ecr_uri"],
             "123456789012.dkr.ecr.us-east-1.amazonaws.com/cl-acceptance-standard",
         )
+
+    def test_target_health_waits_for_a_healthy_target_while_old_targets_drain(
+        self,
+    ) -> None:
+        with (
+            patch.object(
+                VERIFY,
+                "aws_json",
+                side_effect=[
+                    {
+                        "TargetHealthDescriptions": [
+                            {"TargetHealth": {"State": "draining"}}
+                        ]
+                    },
+                    {
+                        "TargetHealthDescriptions": [
+                            {"TargetHealth": {"State": "healthy"}}
+                        ]
+                    },
+                ],
+            ) as aws_json,
+            patch.object(VERIFY.time, "sleep") as sleep,
+        ):
+            VERIFY.verify_target_health("target-group-arn")
+
+        self.assertEqual(aws_json.call_count, 2)
+        sleep.assert_called_once_with(5)
 
 
 if __name__ == "__main__":
