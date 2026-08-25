@@ -31,6 +31,11 @@ on:
         required: false
         default: ""
         type: string
+      create-deployment:
+        description: Create a GitHub deployment record for the environment.
+        required: false
+        default: true
+        type: boolean
       sha:
         description: Desired commit SHA resolved by the planning job.
         required: true
@@ -78,7 +83,9 @@ jobs:
     concurrency:
       group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ inputs.environment }}
       queue: max
-    environment: ${{ inputs.github-environment || inputs.environment }}
+    environment:
+      name: ${{ inputs.github-environment || inputs.environment }}
+      deployment: ${{ inputs.create-deployment }}
     steps:
       - name: Checkout caller repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

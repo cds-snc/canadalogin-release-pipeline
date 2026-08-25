@@ -105,10 +105,18 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)
         self.assertEqual(workflow.count("pipeline_id: acceptance-"), 3)
-        self.assertIn("    environment: acceptance-tests\n", workflow)
+        self.assertEqual(
+            workflow.count(
+                "    environment:\n"
+                "      name: acceptance-tests\n"
+                "      deployment: false\n"
+            ),
+            7,
+        )
         self.assertEqual(
             workflow.count("      github-environment: acceptance-tests\n"), 3
         )
+        self.assertEqual(workflow.count("      create-deployment: false\n"), 3)
         self.assertNotIn("\n    environment: acceptance-terraform\n", workflow)
         self.assertNotIn("\n    environment: acceptance-standard\n", workflow)
         self.assertNotIn("\n    environment: acceptance-react\n", workflow)
@@ -153,8 +161,21 @@ class WorkflowContractTest(unittest.TestCase):
             ROOT / ".github" / "workflows" / "deploy-environment.yml"
         ).read_text()
         self.assertIn(
-            "environment: ${{ inputs.github-environment || inputs.environment }}",
+            "create-deployment:\n"
+            "        description: Create a GitHub deployment record for the environment.\n"
+            "        required: false\n"
+            "        default: true\n"
+            "        type: boolean",
             deploy_workflow,
+        )
+        self.assertIn(
+            "environment:\n"
+            "      name: ${{ inputs.github-environment || inputs.environment }}\n"
+            "      deployment: ${{ inputs.create-deployment }}",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "create-deployment: ${{ inputs.create-deployment }}", release_workflow
         )
 
     def test_acceptance_comment_dispatch_is_maintainer_gated(self) -> None:

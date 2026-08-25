@@ -23,6 +23,11 @@ on:
         required: false
         default: ""
         type: string
+      create-deployment:
+        description: Create a GitHub deployment record for the environment.
+        required: false
+        default: true
+        type: boolean
       pipeline_id:
         description: Optional concurrency namespace for independent pipelines in one repository.
         required: false
@@ -270,6 +275,7 @@ jobs:
       aws-account-id: ${{ inputs.aws-account-id }}
       aws-region: ${{ inputs.aws-region || matrix.aws_region }}
       github-environment: ${{ inputs.github-environment || matrix.environment }}
+      create-deployment: ${{ inputs.create-deployment }}
       pipeline_id: ${{ inputs.pipeline_id }}
       enabled: ${{ matrix.enabled }}
       environment: ${{ matrix.environment }}
