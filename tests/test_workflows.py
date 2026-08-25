@@ -184,7 +184,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn('"inputs=$inputs"', workflow)
         self.assertNotIn("pull_request_target", workflow)
 
-    def test_release_please_is_standalone_and_starts_at_latest_tag(self) -> None:
+    def test_release_please_is_standalone_and_uses_version_manifest(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
         config = json.loads((ROOT / "release-please-config.json").read_text())
         manifest = json.loads((ROOT / ".release-please-manifest.json").read_text())
@@ -197,7 +197,8 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("manifest-file: .release-please-manifest.json", workflow)
         self.assertEqual(config["release-type"], "simple")
         self.assertEqual(list(config["packages"]), ["."])
-        self.assertEqual(manifest, {".": "1.0.12"})
+        self.assertEqual(list(manifest), ["."])
+        self.assertRegex(manifest["."], r"^\d+\.\d+\.\d+$")
         self.assertEqual(
             config["extra-files"],
             [
