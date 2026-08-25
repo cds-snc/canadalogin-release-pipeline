@@ -146,6 +146,21 @@ class WorkflowContractTest(unittest.TestCase):
                 "      aws-region: ${{ inputs.aws-region }}",
                 workflow,
             )
+        self.assertIn(
+            "pipeline_id: acceptance-failure-${{ github.run_id }}\n"
+            "      environment: acceptance-failure\n"
+            "      github-environment: acceptance-tests\n"
+            "      allow-health-check-failure: true\n"
+            "      rebuild: true",
+            workflow,
+        )
+        self.assertIn(
+            "          EXPECTED_RESULT: success\n"
+            "          GITHUB_REPOSITORY: ${{ github.repository }}\n"
+            "          GH_TOKEN: ${{ github.token }}\n"
+            "          PIPELINE_RESULT: ${{ needs.failure.result }}",
+            workflow,
+        )
         self.assertEqual(
             workflow.count(
                 "        env:\n"
@@ -168,6 +183,18 @@ class WorkflowContractTest(unittest.TestCase):
             ),
             3,
         )
+        self.assertIn(
+            "      allow-health-check-failure:\n"
+            "        description: Treat a health-check failure as expected for acceptance tests.\n"
+            "        required: false\n"
+            "        default: false\n"
+            "        type: boolean",
+            release_workflow,
+        )
+        self.assertIn(
+            "allow-health-check-failure: ${{ inputs.allow-health-check-failure }}",
+            release_workflow,
+        )
 
         build_workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
         self.assertIn(
@@ -179,6 +206,24 @@ class WorkflowContractTest(unittest.TestCase):
         ).read_text()
         self.assertIn(
             "environment: ${{ inputs.github-environment || inputs.environment }}",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "      allow-health-check-failure:\n"
+            "        description: Treat a health-check failure as expected for acceptance tests.\n"
+            "        required: false\n"
+            "        default: false\n"
+            "        type: boolean",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "id: health_check\n"
+            "        continue-on-error: ${{ inputs.allow-health-check-failure }}",
+            deploy_workflow,
+        )
+        self.assertIn("if: steps.health_check.outcome == 'success'", deploy_workflow)
+        self.assertIn(
+            "if: failure() || steps.health_check.outcome == 'failure'",
             deploy_workflow,
         )
 

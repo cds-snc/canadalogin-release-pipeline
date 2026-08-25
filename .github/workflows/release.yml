@@ -43,6 +43,11 @@ on:
         required: false
         default: false
         type: boolean
+      allow-health-check-failure:
+        description: Treat a health-check failure as expected for acceptance tests.
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
@@ -277,6 +282,7 @@ jobs:
       s3-role: ${{ matrix.s3_role }}
       ecs-role: ${{ matrix.ecs_role }}
       force-redeploy: ${{ fromJSON(needs.plan.outputs.force_redeploy) }}
+      allow-health-check-failure: ${{ inputs.allow-health-check-failure }}
       notify: ${{ matrix.notify }}
       notify-failure: ${{ matrix.notify_failure }}
     secrets: inherit

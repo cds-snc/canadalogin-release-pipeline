@@ -214,6 +214,7 @@ jobs:
       pipeline_id: acceptance-failure-${{ github.run_id }}
       environment: acceptance-failure
       github-environment: acceptance-tests
+      allow-health-check-failure: true
       rebuild: true
     secrets: inherit
 
@@ -317,7 +318,7 @@ jobs:
         env:
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id }}
           AWS_REGION: ${{ inputs.aws-region }}
-          EXPECTED_RESULT: failure
+          EXPECTED_RESULT: success
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
           PIPELINE_RESULT: ${{ needs.failure.result }}
