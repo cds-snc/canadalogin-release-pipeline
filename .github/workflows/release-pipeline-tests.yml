@@ -419,7 +419,7 @@ jobs:
     needs: [validate_request, assert_suite]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       issues: write
       statuses: write
     steps:
@@ -447,6 +447,20 @@ jobs:
             -f context='Integration / acceptance tests' \
             -f description="$description" \
             -f target_url="$RUN_URL"
+
+      - name: Trigger mergeability check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull-request-number }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          payload="$(jq -n \
+            --arg release_sha "$RELEASE_SHA" \
+            --arg pull_request_number "$PR_NUMBER" \
+            '{event_type: "integration-acceptance-completed", client_payload: {release_sha: $release_sha, pull_request_number: $pull_request_number}}')"
+          gh api --method POST "repos/$REPOSITORY/dispatches" --input - <<<"$payload"
 
       - name: Comment on the release pull request
         env:
