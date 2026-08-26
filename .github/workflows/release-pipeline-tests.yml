@@ -1,4 +1,4 @@
-name: Release pipeline acceptance tests
+name: Integration / acceptance tests
 
 on:
   workflow_dispatch:
@@ -397,7 +397,7 @@ jobs:
         run: python3 acceptance/scripts/verify.py --scenario failure-ecs
 
   assert_suite:
-    name: Acceptance suite result
+    name: Integration / acceptance suite result
     if: always()
     needs: [verify_standard, verify_react, verify_failure]
     runs-on: ubuntu-latest
@@ -414,7 +414,7 @@ jobs:
           test "$FAILURE_RESULT" = success
 
   report:
-    name: Report acceptance suite result
+    name: Report integration / acceptance suite result
     if: always()
     needs: [validate_request, assert_suite]
     runs-on: ubuntu-latest
@@ -436,15 +436,15 @@ jobs:
 
           if [[ "$VALIDATION_RESULT" == success && "$SUITE_RESULT" == success ]]; then
             state=success
-            description='Release pipeline acceptance tests passed.'
+            description='Integration and acceptance tests passed.'
           else
             state=failure
-            description='Release pipeline acceptance tests failed.'
+            description='Integration and acceptance tests failed.'
           fi
 
           gh api --method POST "repos/$REPOSITORY/statuses/$RELEASE_SHA" \
             -f state="$state" \
-            -f context=release-pipeline-acceptance \
+            -f context='Integration / acceptance tests' \
             -f description="$description" \
             -f target_url="$RUN_URL"
 
@@ -456,6 +456,6 @@ jobs:
           RESULT: ${{ needs.validate_request.result == 'success' && needs.assert_suite.result == 'success' && 'passed' || 'failed' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if ! gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Release pipeline acceptance tests $RESULT. $RUN_URL"; then
-            printf '%s\n' 'Acceptance status was published, but the PR comment could not be posted.' >&2
+          if ! gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Integration and acceptance tests $RESULT. $RUN_URL"; then
+            printf '%s\n' 'Integration status was published, but the PR comment could not be posted.' >&2
           fi

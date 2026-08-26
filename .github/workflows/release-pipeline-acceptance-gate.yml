@@ -1,11 +1,11 @@
-name: Release pipeline acceptance gate
+name: PR mergeability check
 
 on:
   pull_request:
     types: [opened, labeled, unlabeled, reopened, synchronize]
   status:
   workflow_run:
-    workflows: ["Release pipeline acceptance tests"]
+    workflows: ["Integration / acceptance tests"]
     types: [completed]
 
 permissions:
@@ -15,14 +15,20 @@ permissions:
 
 jobs:
   gate:
-    name: Release pipeline acceptance gate
+    name: PR mergeability check
     if: >-
       github.event_name == 'pull_request' ||
-      (github.event_name == 'status' && github.event.context == 'release-pipeline-acceptance') ||
+      (github.event_name == 'status' && github.event.context == 'Integration / acceptance tests') ||
       github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
     steps:
-      - name: Require acceptance for release-please pull requests
+      - name: Checkout mergeability policy
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Require current release commit has passed integration tests
         env:
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
@@ -34,13 +40,17 @@ jobs:
         run: |
           set -euo pipefail
 
+          acceptance_context='Integration / acceptance tests'
+
           if [[ "$EVENT_NAME" == status ]]; then
-            if [[ "$STATUS_CONTEXT" != "release-pipeline-acceptance" || -z "$STATUS_SHA" ]]; then
+            if [[ "$STATUS_CONTEXT" != "$acceptance_context" || -z "$STATUS_SHA" ]]; then
               exit 0
             fi
 
+            tested_sha="$STATUS_SHA"
             lookup_sha="$STATUS_SHA"
           elif [[ "$EVENT_NAME" == workflow_run ]]; then
+            tested_sha="$WORKFLOW_RUN_SHA"
             lookup_sha="$WORKFLOW_RUN_SHA"
           else
             pr_number="$PULL_REQUEST_NUMBER"
@@ -71,8 +81,7 @@ jobs:
           fi
 
           statuses_json="$(gh api "repos/$REPOSITORY/commits/$head_sha/statuses?per_page=100")"
-          acceptance_state="$(jq -r '[.[] | select(.context == "release-pipeline-acceptance")] | .[0].state // "missing"' <<<"$statuses_json")"
-          if [[ "$acceptance_state" != success ]]; then
-            printf 'Release pipeline acceptance status is %s for %s.\n' "$acceptance_state" "$head_sha" >&2
-            exit 1
-          fi
+          CURRENT_SHA="$head_sha" \
+          TESTED_SHA="${tested_sha:-}" \
+          STATUSES_JSON="$statuses_json" \
+            python3 acceptance/scripts/check_mergeability.py
