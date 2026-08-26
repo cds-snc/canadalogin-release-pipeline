@@ -430,6 +430,8 @@ resource "aws_ecs_service" "app" {
   launch_type     = "FARGATE"
   propagate_tags  = "SERVICE"
 
+  wait_for_steady_state = true
+
   deployment_circuit_breaker {
     enable   = true
     rollback = true
