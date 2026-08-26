@@ -64,7 +64,9 @@ Every required build must pass before any environment begins deployment. Compone
 Only release-please pull requests require the integration acceptance suite. A
 write-level repository user can request it by commenting `!test`; the request
 starts the manually triggered acceptance workflow, and the release pull request
-remains blocked until the `Release pipeline acceptance gate` succeeds.
+remains blocked until the `PR mergeability check` succeeds. The
+`Integration / acceptance tests` status is attached to the exact release commit,
+so a new commit requires a new `!test` run.
 
 ## Configuration examples
 

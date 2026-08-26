@@ -441,6 +441,117 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(runner.commands[7][0:3], ("aws", "ssm", "put-parameter"))
         self.assertEqual(result.changed_resources, ("ecs:cluster/service",))
 
+    def test_ecs_deploy_updates_every_service_in_a_multi_service_backend(self) -> None:
+        config = self.config("gc-signin-partner-portal")
+        repository = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/partner"
+
+        def service_document(task_definition: str, deployment_id: str) -> str:
+            return json.dumps(
+                {
+                    "services": [
+                        {
+                            "taskDefinition": task_definition,
+                            "deployments": [
+                                {"id": deployment_id, "status": "PRIMARY"}
+                            ],
+                        }
+                    ],
+                    "failures": [],
+                }
+            )
+
+        def task_document(image: str) -> str:
+            return json.dumps(
+                {
+                    "taskDefinition": {
+                        "family": "partner",
+                        "containerDefinitions": [
+                            {"name": "app", "image": image},
+                        ],
+                    }
+                }
+            )
+
+        runner = AwsRunner(
+            [
+                (
+                    0,
+                    json.dumps(
+                        {
+                            "imageDetails": [
+                                {
+                                    "imageTags": ["abc123"],
+                                    "imageDigest": "sha256:new",
+                                }
+                            ]
+                        }
+                    ),
+                ),
+                (0, service_document("task:web:1", "old-web")),
+                (0, task_document(f"{repository}:old")),
+                (0, service_document("task:worker:1", "old-worker")),
+                (0, task_document(f"{repository}:old")),
+                (0, json.dumps({"taskDefinition": {"taskDefinitionArn": "task:web:2"}})),
+                (0, "{}"),
+                (0, self.stable_service("task:web:2", "new-web")),
+                (0, task_document(f"{repository}@sha256:new")),
+                (0, "{}"),
+                (
+                    0,
+                    json.dumps(
+                        {"taskDefinition": {"taskDefinitionArn": "task:worker:2"}}
+                    ),
+                ),
+                (0, "{}"),
+                (0, self.stable_service("task:worker:2", "new-worker")),
+                (0, task_document(f"{repository}@sha256:new")),
+                (0, "{}"),
+            ]
+        )
+        context = self.context(
+            Path("."),
+            {
+                "RELEASE_ECR_REPOSITORY": repository,
+                "RELEASE_ECS_WEB_CLUSTER": "cluster-web",
+                "RELEASE_ECS_WEB_SERVICE": "service-web",
+                "RELEASE_ECS_WEB_CONTAINER": "app",
+                "RELEASE_ECS_WORKER_CLUSTER": "cluster-worker",
+                "RELEASE_ECS_WORKER_SERVICE": "service-worker",
+                "RELEASE_ECS_WORKER_CONTAINER": "app",
+            },
+        )
+
+        result = deploy_ecs(config, context, runner=runner)
+
+        self.assertEqual(
+            result.changed_resources,
+            (
+                "ecs:cluster-web/service-web",
+                "ecs:cluster-worker/service-worker",
+            ),
+        )
+        update_commands = [
+            command
+            for command in runner.commands
+            if command[:3] == ("aws", "ecs", "update-service")
+        ]
+        self.assertEqual(
+            [command[command.index("--cluster") + 1] for command in update_commands],
+            ["cluster-web", "cluster-worker"],
+        )
+        ssm_commands = [
+            command
+            for command in runner.commands
+            if command[:3] == ("aws", "ssm", "put-parameter")
+        ]
+        self.assertEqual(
+            [command[command.index("--name") + 1] for command in ssm_commands],
+            [
+                "/ecs/cluster-web/service-web/container-image",
+                "/ecs/cluster-worker/service-worker/container-image",
+            ],
+        )
+
     def test_ecs_wait_failure_includes_rollout_diagnostics(self) -> None:
         config = self.config("gc-signin-migration-oidc-rp-simulator")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})

@@ -30,6 +30,13 @@ class WorkflowContractTest(unittest.TestCase):
                     failures.append(f"{path}: {reference} is not pinned to a full SHA")
         self.assertEqual(failures, [])
 
+    def test_unit_test_check_has_an_explicit_user_facing_name(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+
+        self.assertIn("name: Unit tests\n", workflow)
+        self.assertIn("  test:\n    name: Unit tests", workflow)
+        self.assertNotIn("name: CI\n", workflow)
+
     def test_privileged_pull_request_target_is_not_used(self) -> None:
         for path in self.workflow_files():
             with self.subTest(path=path.name):
@@ -324,8 +331,10 @@ class WorkflowContractTest(unittest.TestCase):
             self.assertIn("autorelease: pending", candidate)
             self.assertIn('author_type" != "Bot"', candidate)
         self.assertIn("statuses: write", workflow)
-        self.assertIn("context=release-pipeline-acceptance", workflow)
-        self.assertIn("context=release-pipeline-acceptance", dispatcher)
+        self.assertIn("context='Integration / acceptance tests'", workflow)
+        self.assertIn("context='Integration / acceptance tests'", dispatcher)
+        self.assertIn("name: Integration / acceptance tests", workflow)
+        self.assertIn('statuses/$RELEASE_SHA', workflow)
         self.assertIn("required: true\n        type: string", workflow)
         self.assertIn("WORKFLOW_SHA", workflow)
         self.assertIn('$head_sha" != "$RELEASE_SHA"', workflow)
@@ -337,10 +346,25 @@ class WorkflowContractTest(unittest.TestCase):
 
         self.assertIn("pull_request:", workflow)
         self.assertIn("status:", workflow)
+        self.assertIn('workflows: ["Integration / acceptance tests"]', workflow)
+        self.assertIn(
+            "github.event.context == 'Integration / acceptance tests'", workflow
+        )
         self.assertIn("statuses: read", workflow)
-        self.assertIn("release-pipeline-acceptance", workflow)
-        self.assertIn("acceptance_state", workflow)
-        self.assertIn('acceptance_state" != success', workflow)
+        self.assertIn("name: PR mergeability check", workflow)
+        self.assertIn("acceptance_context='Integration / acceptance tests'", workflow)
+        self.assertIn('tested_sha="$STATUS_SHA"', workflow)
+        self.assertIn('tested_sha="$WORKFLOW_RUN_SHA"', workflow)
+        self.assertIn("acceptance/scripts/check_mergeability.py", workflow)
+        self.assertIn("statuses?per_page=100", workflow)
+        policy = (
+            ROOT / "acceptance" / "scripts" / "check_mergeability.py"
+        ).read_text()
+        self.assertIn("tested_sha != current_sha", policy)
+        self.assertIn("::error title=PR mergeability check::", policy)
+        self.assertIn("Comment !test", policy)
+        self.assertIn('state == "success"', policy)
+        self.assertNotIn("release-pipeline-acceptance", workflow)
         self.assertNotIn("id-token:", workflow)
         self.assertNotIn("pull_request_target", workflow)
 
