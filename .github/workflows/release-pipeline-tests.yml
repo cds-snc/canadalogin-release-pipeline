@@ -69,10 +69,34 @@ jobs:
             exit 1
           fi
 
-  terraform:
-    name: Apply acceptance infrastructure
+  discover:
+    name: Discover acceptance tests
     needs: validate_request
     if: needs.validate_request.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.release-sha }}
+          persist-credentials: false
+
+      - name: Set up release tooling
+        uses: ./actions/setup
+
+      - name: Build acceptance test matrix
+        id: matrix
+        env:
+          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: python3 acceptance/runner.py matrix --github-output
+
+  terraform:
+    name: Apply acceptance infrastructure
+    needs: [validate_request, discover]
+    if: needs.validate_request.result == 'success' && needs.discover.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: acceptance-tests
@@ -126,188 +150,50 @@ jobs:
       - name: Apply acceptance Terraform
         env:
           AWS_REGION: ${{ env.AWS_REGION }}
-          TF_VAR_acceptance_run_id: ${{ github.run_id }}-${{ github.run_attempt }}
           TF_VAR_aws_account_id: ${{ env.AWS_ACCOUNT_ID }}
           TF_VAR_aws_region: ${{ env.AWS_REGION }}
           TF_VAR_github_oidc_subject_prefix: repo:${{ github.repository_owner }}@${{ github.repository_owner_id }}/${{ github.event.repository.name }}@${{ github.repository_id }}
         run: terraform -chdir=acceptance/terraform apply -input=false -auto-approve
 
-  standard:
-    name: Exercise standard ECS pipeline
-    needs: terraform
-    uses: ./.github/workflows/release.yml
+  acceptance:
+    name: Acceptance test (${{ matrix.id }})
+    needs: [terraform, discover]
+    if: needs.terraform.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    uses: ./.github/workflows/acceptance-test.yml
     with:
-      config-path: acceptance/scenarios/standard-ecs/release-pipeline-configuration.yml
-      aws-account-id: "014097726303"
-      aws-region: ca-central-1
-      pipeline_id: acceptance-standard-${{ github.run_id }}
-      environment: acceptance-standard
-      github-environment: acceptance-tests
-      create-deployment: false
-      rebuild: true
+      test-id: ${{ matrix.id }}
+      release-sha: ${{ inputs.release-sha }}
+      config-path: ${{ matrix.config_path }}
+      terraform-directory: ${{ matrix.terraform_directory }}
+      environment: ${{ matrix.environment }}
+      github-environment: ${{ matrix.github_environment }}
+      aws-role: ${{ matrix.aws_role }}
+      aws-account-id: ${{ matrix.aws_account_id }}
+      aws-region: ${{ matrix.aws_region }}
+      pipeline-id-prefix: ${{ matrix.pipeline_id_prefix }}
+      create-deployment: ${{ matrix.create_deployment }}
+      expect-health-check-failure: ${{ matrix.expect_health_check_failure }}
+      rebuild: ${{ matrix.rebuild }}
     secrets: inherit
-
-  react:
-    name: Exercise ECS plus React pipeline
-    needs: terraform
-    uses: ./.github/workflows/release.yml
-    with:
-      config-path: acceptance/scenarios/react-ecs/release-pipeline-configuration.yml
-      aws-account-id: "014097726303"
-      aws-region: ca-central-1
-      pipeline_id: acceptance-react-${{ github.run_id }}
-      environment: acceptance-react
-      github-environment: acceptance-tests
-      create-deployment: false
-      rebuild: true
-    secrets: inherit
-
-  failure:
-    name: Exercise expected health-hook failure
-    needs: terraform
-    uses: ./.github/workflows/release.yml
-    with:
-      config-path: acceptance/scenarios/failure-ecs/release-pipeline-configuration.yml
-      aws-account-id: "014097726303"
-      aws-region: ca-central-1
-      pipeline_id: acceptance-failure-${{ github.run_id }}
-      environment: acceptance-failure
-      github-environment: acceptance-tests
-      create-deployment: false
-      expect-health-check-failure: true
-      rebuild: true
-    secrets: inherit
-
-  verify_standard:
-    name: Verify standard ECS state
-    if: always() && needs.standard.result != 'skipped'
-    needs: [standard]
-    runs-on: ubuntu-latest
-    environment:
-      name: acceptance-tests
-      deployment: false
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout prospective release
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/cl-acceptance-standard-actions
-          role-session-name: CanadaLoginAcceptanceVerifyStandard
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Verify workflow and AWS state
-        env:
-          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ env.AWS_REGION }}
-          EXPECTED_RESULT: success
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GH_TOKEN: ${{ github.token }}
-          PIPELINE_RESULT: ${{ needs.standard.result }}
-          RELEASE_SHA: ${{ inputs.release-sha }}
-          RUN_ID: ${{ github.run_id }}
-        run: python3 acceptance/scripts/verify.py --scenario standard-ecs
-
-  verify_react:
-    name: Verify React ECS state
-    if: always() && needs.react.result != 'skipped'
-    needs: [react]
-    runs-on: ubuntu-latest
-    environment:
-      name: acceptance-tests
-      deployment: false
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout prospective release
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/cl-acceptance-react-actions
-          role-session-name: CanadaLoginAcceptanceVerifyReact
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Verify workflow and AWS state
-        env:
-          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ env.AWS_REGION }}
-          EXPECTED_RESULT: success
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GH_TOKEN: ${{ github.token }}
-          PIPELINE_RESULT: ${{ needs.react.result }}
-          RELEASE_SHA: ${{ inputs.release-sha }}
-          RUN_ID: ${{ github.run_id }}
-        run: python3 acceptance/scripts/verify.py --scenario react-ecs
-
-  verify_failure:
-    name: Verify expected failure state
-    if: always() && needs.failure.result != 'skipped'
-    needs: [failure]
-    runs-on: ubuntu-latest
-    environment:
-      name: acceptance-tests
-      deployment: false
-    permissions:
-      actions: read
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout prospective release
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/cl-acceptance-failure-actions
-          role-session-name: CanadaLoginAcceptanceVerifyFailure
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Verify expected failure and AWS state
-        env:
-          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}
-          AWS_REGION: ${{ env.AWS_REGION }}
-          EXPECTED_RESULT: success
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GH_TOKEN: ${{ github.token }}
-          PIPELINE_RESULT: ${{ needs.failure.result }}
-          RELEASE_SHA: ${{ inputs.release-sha }}
-          RUN_ID: ${{ github.run_id }}
-        run: python3 acceptance/scripts/verify.py --scenario failure-ecs
 
   assert_suite:
     name: Integration / acceptance suite result
     if: always()
-    needs: [verify_standard, verify_react, verify_failure]
+    needs: [terraform, acceptance]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every scenario verification
+      - name: Require every acceptance test
         env:
-          STANDARD_RESULT: ${{ needs.verify_standard.result }}
-          REACT_RESULT: ${{ needs.verify_react.result }}
-          FAILURE_RESULT: ${{ needs.verify_failure.result }}
+          TERRAFORM_RESULT: ${{ needs.terraform.result }}
+          ACCEPTANCE_RESULT: ${{ needs.acceptance.result }}
         run: |
           set -euo pipefail
-          test "$STANDARD_RESULT" = success
-          test "$REACT_RESULT" = success
-          test "$FAILURE_RESULT" = success
+          test "$TERRAFORM_RESULT" = success
+          test "$ACCEPTANCE_RESULT" = success
 
   report:
     name: Report integration / acceptance suite result

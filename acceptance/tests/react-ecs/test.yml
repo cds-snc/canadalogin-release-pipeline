@@ -1,0 +1,28 @@
+schema_version: 1
+id: react-ecs
+name: React plus ECS pipeline
+enabled: true
+
+release:
+  config_path: release-pipeline-configuration.yml
+  environment: acceptance-react
+  github_environment: acceptance-tests
+  pipeline_id_prefix: acceptance-react
+  create_deployment: false
+  expect_health_check_failure: false
+  rebuild: true
+
+infrastructure:
+  terraform_directory: infra
+
+verification:
+  script: verify.py
+  aws_role: cl-acceptance-react-actions
+  resources:
+    app_name: cl-acceptance-react
+    ecr_repository: cl-acceptance-react
+    cluster: cl-acceptance-react
+    service: cl-acceptance-react-app
+    ssm_parameter: /release-pipeline-acceptance/react-ecs/container-image
+    site_bucket: cl-acceptance-react-site-{aws_account_id}
+    artifact_bucket: cl-acceptance-react-artifacts-{aws_account_id}

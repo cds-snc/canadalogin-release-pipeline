@@ -1,0 +1,26 @@
+schema_version: 1
+id: failure-ecs
+name: Expected health-hook failure
+enabled: true
+
+release:
+  config_path: release-pipeline-configuration.yml
+  environment: acceptance-failure
+  github_environment: acceptance-tests
+  pipeline_id_prefix: acceptance-failure
+  create_deployment: false
+  expect_health_check_failure: true
+  rebuild: true
+
+infrastructure:
+  terraform_directory: infra
+
+verification:
+  script: verify.py
+  aws_role: cl-acceptance-failure-actions
+  resources:
+    app_name: cl-acceptance-failure
+    ecr_repository: cl-acceptance-failure
+    cluster: cl-acceptance-failure
+    service: cl-acceptance-failure-app
+    ssm_parameter: /release-pipeline-acceptance/failure-ecs/container-image
