@@ -119,3 +119,25 @@ module "failure" {
   ssm_parameter_name         = "/release-pipeline-acceptance/failure-ecs/container-image"
   vpc_cidr                   = "10.63.0.0/16"
 }
+
+resource "terraform_data" "acceptance_cleanup" {
+  triggers_replace = [var.acceptance_run_id]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      "${path.root}/../scripts/cleanup.sh" \
+        --ecr-repository cl-acceptance-standard \
+        --ecr-repository cl-acceptance-react \
+        --ecr-repository cl-acceptance-failure \
+        --bucket "cl-acceptance-react-artifacts-${var.aws_account_id}" \
+        --bucket "cl-acceptance-react-site-${var.aws_account_id}"
+    EOT
+
+    environment = {
+      AWS_DEFAULT_REGION = var.aws_region
+      AWS_REGION         = var.aws_region
+    }
+  }
+
+  depends_on = [module.standard, module.react, module.failure]
+}

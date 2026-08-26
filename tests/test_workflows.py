@@ -108,6 +108,15 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertNotIn("\n  pull_request:", workflow)
+        self.assertIn('AWS_ACCOUNT_ID: "014097726303"', workflow)
+        self.assertIn("AWS_REGION: ca-central-1", workflow)
+        self.assertNotIn("${{ inputs.aws-account-id }}", workflow)
+        self.assertNotIn("${{ inputs.aws-region }}", workflow)
+        self.assertIn(
+            "TF_VAR_acceptance_run_id: ${{ github.run_id }}-${{ github.run_attempt }}",
+            workflow,
+        )
+        self.assertIn("name: Apply acceptance Terraform", workflow)
         self.assertIn("config-path: acceptance/scenarios/standard-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/react-ecs/", workflow)
         self.assertIn("config-path: acceptance/scenarios/failure-ecs/", workflow)
@@ -118,7 +127,7 @@ class WorkflowContractTest(unittest.TestCase):
                 "      name: acceptance-tests\n"
                 "      deployment: false\n"
             ),
-            7,
+            4,
         )
         self.assertEqual(
             workflow.count("      github-environment: acceptance-tests\n"), 3
@@ -148,23 +157,28 @@ class WorkflowContractTest(unittest.TestCase):
             self.assertIn(
                 "config-path: acceptance/scenarios/"
                 f"{scenario}/release-pipeline-configuration.yml\n"
-                "      aws-account-id: ${{ inputs.aws-account-id }}\n"
-                "      aws-region: ${{ inputs.aws-region }}",
+                '      aws-account-id: "014097726303"\n'
+                "      aws-region: ca-central-1",
                 workflow,
             )
         self.assertEqual(
             workflow.count(
                 "        env:\n"
-                "          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id }}\n"
-                "          AWS_REGION: ${{ inputs.aws-region }}\n"
+                "          AWS_ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID }}\n"
+                "          AWS_REGION: ${{ env.AWS_REGION }}\n"
             ),
             3,
         )
-        self.assertIn(
-            "needs: [prepare_standard, prepare_react, prepare_failure]", workflow
-        )
+        self.assertIn("needs: terraform", workflow)
+        self.assertNotIn("prepare_standard", workflow)
+        self.assertNotIn("prepare_react", workflow)
+        self.assertNotIn("prepare_failure", workflow)
         self.assertIn(
             "needs: [verify_standard, verify_react, verify_failure]", workflow
+        )
+        self.assertLess(
+            workflow.index("name: Apply acceptance Terraform"),
+            workflow.index("name: Exercise standard ECS pipeline"),
         )
 
         release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
@@ -220,6 +234,17 @@ class WorkflowContractTest(unittest.TestCase):
             "        type: boolean",
             deploy_workflow,
         )
+
+        terraform = (ROOT / "acceptance" / "terraform" / "main.tf").read_text()
+        self.assertIn('resource "terraform_data" "acceptance_cleanup"', terraform)
+        self.assertIn("triggers_replace = [var.acceptance_run_id]", terraform)
+        self.assertIn(
+            "depends_on = [module.standard, module.react, module.failure]", terraform
+        )
+        ecs_scenario = (
+            ROOT / "acceptance" / "terraform" / "modules" / "ecs-scenario" / "main.tf"
+        ).read_text()
+        self.assertIn("wait_for_steady_state = true", ecs_scenario)
         self.assertIn(
             "id: health_check\n"
             "        continue-on-error: ${{ inputs.expect-health-check-failure }}",
@@ -280,15 +305,14 @@ class WorkflowContractTest(unittest.TestCase):
             self.assertIn("issues/$PR_NUMBER/comments", workflow)
             self.assertIn("could not be posted", workflow)
 
-    def test_acceptance_preparation_waits_for_ecs_stability(self) -> None:
+    def test_acceptance_apply_reconciles_scenario_state(self) -> None:
         workflow = (
             ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
         ).read_text()
 
-        self.assertEqual(workflow.count("aws ecs wait services-stable"), 3)
-        for scenario in ("standard", "react", "failure"):
-            self.assertIn(f"--cluster cl-acceptance-{scenario}", workflow)
-            self.assertIn(f"--services cl-acceptance-{scenario}-app", workflow)
+        self.assertNotIn("aws ecs wait services-stable", workflow)
+        self.assertNotIn("acceptance/scripts/cleanup.sh", workflow)
+        self.assertEqual(workflow.count("needs: terraform"), 3)
 
     def test_release_please_is_standalone_and_uses_version_manifest(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
