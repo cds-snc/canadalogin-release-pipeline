@@ -1,8 +1,0 @@
-schema_version: 2
-application: migration-rp-simulator
-profile: ecs-service
-
-environments: [dev, test, staging]
-
-backend:
-  dockerfile: multi-rp-simulator/Dockerfile
