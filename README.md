@@ -21,7 +21,7 @@ Release orchestration stays here. Application-specific commands and infrastructu
 - Slack start, success, build failure, and deployment failure notifications
 - pull request comments that identify environment and version changes
 - repository-owned before-deploy, health-check, after-deploy, and failure hooks
-- explicit expected health-check failure assertions for acceptance scenarios
+- explicit expected health-check failure assertions for acceptance tests
 - serialized workflow runs and per-environment deployments
 
 All release decisions and AWS command orchestration are implemented in Python. Workflow shell steps only invoke the Python CLI.

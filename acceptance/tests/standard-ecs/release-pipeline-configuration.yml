@@ -16,8 +16,8 @@ builds:
     environments: [acceptance-standard]
     aws_role: cl-acceptance-standard-actions
     docker:
-      context: acceptance/apps/standard-ecs
-      dockerfile: acceptance/apps/standard-ecs/Dockerfile
+      context: acceptance/tests/standard-ecs/app
+      dockerfile: acceptance/tests/standard-ecs/app/Dockerfile
       repository:
         value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-standard"
       tags: [sha]

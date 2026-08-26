@@ -16,8 +16,8 @@ builds:
     environments: [acceptance-failure]
     aws_role: cl-acceptance-failure-actions
     docker:
-      context: acceptance/apps/failure-ecs
-      dockerfile: acceptance/apps/failure-ecs/Dockerfile
+      context: acceptance/tests/failure-ecs/app
+      dockerfile: acceptance/tests/failure-ecs/app/Dockerfile
       repository:
         value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-failure"
       tags: [sha]
@@ -42,6 +42,6 @@ deployments:
 
 hooks:
   health_check:
-    - [python3, acceptance/hooks/fail-health-check.py]
+    - [python3, acceptance/tests/failure-ecs/hooks/fail-health-check.py]
   on_failure:
-    - [python3, acceptance/hooks/record-failure.py]
+    - [python3, acceptance/tests/failure-ecs/hooks/record-failure.py]

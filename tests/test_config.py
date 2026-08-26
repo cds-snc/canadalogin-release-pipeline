@@ -246,20 +246,5 @@ class PipelineConfigTest(unittest.TestCase):
                 self.assertTrue(config.builds)
                 self.assertTrue(config.deployments)
 
-    def test_all_acceptance_scenarios_are_valid(self) -> None:
-        scenarios = Path(__file__).parents[1] / "acceptance" / "scenarios"
-        paths = sorted(scenarios.glob("*/release-pipeline-configuration.yml"))
-
-        self.assertEqual(len(paths), 3)
-        for path in paths:
-            with self.subTest(scenario=path.parent.name):
-                config = PipelineConfig.load(path)
-                self.assertEqual(
-                    config.environments.deploy, (config.environments.development,)
-                )
-                self.assertTrue(config.builds)
-                self.assertTrue(config.deployments)
-
-
 if __name__ == "__main__":
     unittest.main()

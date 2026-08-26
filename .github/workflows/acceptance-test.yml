@@ -1,0 +1,195 @@
+name: Acceptance test
+
+on:
+  workflow_call:
+    inputs:
+      test-id:
+        description: Acceptance test package identifier.
+        required: true
+        type: string
+      release-sha:
+        description: Exact release-pipeline commit to exercise.
+        required: true
+        type: string
+      config-path:
+        description: Release configuration path from the test manifest.
+        required: true
+        type: string
+      terraform-directory:
+        description: Test-owned Terraform root from the test manifest.
+        required: true
+        type: string
+      environment:
+        description: Release environment to exercise.
+        required: true
+        type: string
+      github-environment:
+        description: GitHub environment used by the acceptance roles.
+        required: true
+        type: string
+      aws-role:
+        description: AWS role used by the test verifier.
+        required: true
+        type: string
+      aws-account-id:
+        description: AWS account hosting the acceptance resources.
+        required: true
+        type: string
+      aws-region:
+        description: AWS region hosting the acceptance resources.
+        required: true
+        type: string
+      pipeline-id-prefix:
+        description: Prefix for this test's release pipeline concurrency namespace.
+        required: true
+        type: string
+      create-deployment:
+        description: Create a GitHub deployment record for the test environment.
+        required: true
+        type: boolean
+      expect-health-check-failure:
+        description: Require the health check to fail and treat that failure as expected.
+        required: true
+        type: boolean
+      rebuild:
+        description: Rebuild artifacts during the test deployment.
+        required: true
+        type: boolean
+
+permissions:
+  actions: read
+  contents: write
+  id-token: write
+  issues: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  infrastructure:
+    name: Prepare ${{ inputs.test-id }} infrastructure
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.github-environment }}
+      deployment: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.release-sha }}
+          persist-credentials: false
+
+      - name: Confirm prospective SHA
+        env:
+          EXPECTED_SHA: ${{ inputs.release-sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/cl-acceptance-terraform
+          role-session-name: CanadaLoginAcceptanceTerraform-${{ inputs.test-id }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.9.4
+
+      - name: Format and initialize Terraform
+        env:
+          AWS_REGION: ${{ inputs.aws-region }}
+          TF_STATE_BUCKET: cl-acceptance-tfstate-${{ inputs.aws-account-id }}
+          TF_STATE_LOCK_TABLE: cl-acceptance-tfstate-lock-${{ inputs.aws-account-id }}
+          TERRAFORM_DIRECTORY: ${{ inputs.terraform-directory }}
+          TEST_ID: ${{ inputs.test-id }}
+        run: |
+          set -euo pipefail
+          terraform -chdir="$TERRAFORM_DIRECTORY" fmt -check -recursive
+          terraform -chdir="$TERRAFORM_DIRECTORY" init -input=false -reconfigure \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=release-pipeline-acceptance/$TEST_ID.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE"
+          terraform -chdir="$TERRAFORM_DIRECTORY" validate
+
+      - name: Apply test infrastructure
+        env:
+          AWS_REGION: ${{ inputs.aws-region }}
+          TERRAFORM_DIRECTORY: ${{ inputs.terraform-directory }}
+          TF_VAR_account_id: ${{ inputs.aws-account-id }}
+          TF_VAR_aws_region: ${{ inputs.aws-region }}
+          TF_VAR_acceptance_run_id: ${{ github.run_id }}-${{ github.run_attempt }}
+          TF_VAR_github_oidc_subject_prefix: repo:${{ github.repository_owner }}@${{ github.repository_owner_id }}/${{ github.event.repository.name }}@${{ github.repository_id }}
+        run: terraform -chdir="$TERRAFORM_DIRECTORY" apply -input=false -auto-approve
+
+  release:
+    name: Exercise ${{ inputs.test-id }} release pipeline
+    needs: infrastructure
+    permissions:
+      actions: read
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
+      statuses: write
+    uses: ./.github/workflows/release.yml
+    with:
+      config-path: ${{ inputs.config-path }}
+      aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region }}
+      pipeline_id: ${{ inputs.pipeline-id-prefix }}-${{ github.run_id }}
+      environment: ${{ inputs.environment }}
+      github-environment: ${{ inputs.github-environment }}
+      create-deployment: ${{ inputs.create-deployment }}
+      expect-health-check-failure: ${{ inputs.expect-health-check-failure }}
+      rebuild: ${{ inputs.rebuild }}
+    secrets: inherit
+
+  verify:
+    name: Verify ${{ inputs.test-id }}
+    if: always() && needs.release.result != 'skipped'
+    needs: [infrastructure, release]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.github-environment }}
+      deployment: false
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout prospective release
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.release-sha }}
+          persist-credentials: false
+
+      - name: Confirm prospective SHA
+        env:
+          EXPECTED_SHA: ${{ inputs.release-sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Set up release tooling
+        uses: ./actions/setup
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id }}:role/${{ inputs.aws-role }}
+          role-session-name: CanadaLoginAcceptanceVerify-${{ inputs.test-id }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Run test-owned verifier
+        env:
+          AWS_ACCOUNT_ID: ${{ inputs.aws-account-id }}
+          AWS_REGION: ${{ inputs.aws-region }}
+          EXPECTED_RESULT: success
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          PIPELINE_RESULT: ${{ needs.release.result }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 acceptance/runner.py verify --test "${{ inputs.test-id }}"

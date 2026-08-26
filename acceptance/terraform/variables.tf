@@ -15,9 +15,3 @@ variable "github_oidc_subject_prefix" {
   type        = string
   default     = "repo:cds-snc@30166251/canadalogin-release-system@1337624227"
 }
-
-variable "acceptance_run_id" {
-  description = "Unique acceptance run identifier used to clear per-run artifacts."
-  type        = string
-  default     = ""
-}

@@ -1,0 +1,26 @@
+schema_version: 1
+id: standard-ecs
+name: Standard ECS pipeline
+enabled: true
+
+release:
+  config_path: release-pipeline-configuration.yml
+  environment: acceptance-standard
+  github_environment: acceptance-tests
+  pipeline_id_prefix: acceptance-standard
+  create_deployment: false
+  expect_health_check_failure: false
+  rebuild: true
+
+infrastructure:
+  terraform_directory: infra
+
+verification:
+  script: verify.py
+  aws_role: cl-acceptance-standard-actions
+  resources:
+    app_name: cl-acceptance-standard
+    ecr_repository: cl-acceptance-standard
+    cluster: cl-acceptance-standard
+    service: cl-acceptance-standard-app
+    ssm_parameter: /release-pipeline-acceptance/standard-ecs/container-image

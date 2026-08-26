@@ -17,14 +17,14 @@ builds:
     aws_role: cl-acceptance-react-actions
     node_version: "22"
     command:
-      working_directory: acceptance/apps/react-ecs/frontend
+      working_directory: acceptance/tests/react-ecs/frontend
       steps:
         - [npm, ci]
         - [npm, run, build]
       environment:
         VITE_RELEASE_SHA: "{sha}"
     s3_artifact:
-      source: acceptance/apps/react-ecs/frontend/dist
+      source: acceptance/tests/react-ecs/frontend/dist
       bucket:
         value: "cl-acceptance-react-artifacts-{aws_account_id}"
       prefix: "{sha}"
@@ -35,8 +35,8 @@ builds:
     environments: [acceptance-react]
     aws_role: cl-acceptance-react-actions
     docker:
-      context: acceptance/apps/react-ecs/backend
-      dockerfile: acceptance/apps/react-ecs/backend/Dockerfile
+      context: acceptance/tests/react-ecs/backend
+      dockerfile: acceptance/tests/react-ecs/backend/Dockerfile
       repository:
         value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-react"
       tags: [sha]
