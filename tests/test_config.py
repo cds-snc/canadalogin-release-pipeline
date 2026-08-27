@@ -102,11 +102,6 @@ class PipelineConfigTest(unittest.TestCase):
         self.assertEqual(config.builds[2].source_environment, "staging")
         self.assertFalse(config.builds[2].gates_deployment)
 
-    def test_schema_two_uses_platform_notification_defaults(self) -> None:
-        config = self.load(SCHEMA_TWO_CONFIG)
-
-        self.assertTrue(config.notifications.use_platform_defaults)
-
     def test_rejects_schema_one(self) -> None:
         with self.assertRaisesRegex(ConfigError, "schema_version must be 2"):
             self.load("schema_version: 1\napplication: old\n")

@@ -172,7 +172,7 @@ def create_plan(
 
     return Plan(
         event_name=event_name,
-        release_please=event_name == "push" and config.release.enabled,
+        release_please=event_name == "push",
         force_redeploy=force_redeploy,
         promotions=promotions,
         required_builds=tuple(required_builds),

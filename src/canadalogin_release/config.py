@@ -134,13 +134,7 @@ class EnvironmentConfig:
 
 @dataclass(frozen=True)
 class ReleaseConfig:
-    enabled: bool = True
     tag_prefix: str = "v"
-
-
-@dataclass(frozen=True)
-class NotificationConfig:
-    use_platform_defaults: bool = True
 
 
 @dataclass(frozen=True)
@@ -233,7 +227,6 @@ class PipelineConfig:
     aws_region: str
     environments: EnvironmentConfig
     release: ReleaseConfig
-    notifications: NotificationConfig
     builds: tuple[BuildConfig, ...]
     deployments: tuple[DeploymentConfig, ...]
     hooks: HookConfig
@@ -305,7 +298,6 @@ def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
         versioned=tuple(environment for environment in deploy if environment != "dev"),
     )
 
-    notifications = NotificationConfig(use_platform_defaults=True)
     hooks = _parse_hooks(raw.get("hooks", {}))
     repository_dispatch = _parse_events(raw.get("events", {}), deploy)
 
@@ -333,7 +325,6 @@ def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
         aws_region="ca-central-1",
         environments=environment_config,
         release=ReleaseConfig(),
-        notifications=notifications,
         builds=tuple(builds),
         deployments=tuple(deployments),
         hooks=hooks,
