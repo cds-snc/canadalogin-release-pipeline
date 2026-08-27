@@ -11,7 +11,7 @@ module "scenario" {
   ecr_repository             = "cl-acceptance-standard"
   cluster_name               = "cl-acceptance-standard"
   service_name               = "cl-acceptance-standard-app"
-  ssm_parameter_name         = "/release-pipeline-acceptance/standard-ecs/container-image"
+  ssm_parameter_name         = "/ecs/cl-acceptance-standard/cl-acceptance-standard-app/container-image"
   vpc_cidr                   = "10.61.0.0/16"
 }
 
