@@ -23,4 +23,4 @@ verification:
     ecr_repository: cl-acceptance-standard
     cluster: cl-acceptance-standard
     service: cl-acceptance-standard-app
-    ssm_parameter: /release-pipeline-acceptance/standard-ecs/container-image
+    ssm_parameter: /ecs/cl-acceptance-standard/cl-acceptance-standard-app/container-image
