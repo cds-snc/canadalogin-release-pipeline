@@ -8,40 +8,19 @@ from canadalogin_release.planner import create_plan
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
 CLIENT_SHAPES = {
-    "gc-signin-user-selfservice-webapp": {
+    "canadalogin-user-selfservice-webapp": {
         "builds": ("frontend", "backend", "load-test"),
         "deployment_kinds": ("s3", "ecs"),
         "ecs_services": 1,
         "s3_targets": 1,
         "cloudfront_invalidations": 1,
     },
-    "gc-signin-static-website": {
+    "canadalogin-static-website": {
         "builds": ("website",),
         "deployment_kinds": ("s3",),
         "ecs_services": 0,
         "s3_targets": 2,
         "cloudfront_invalidations": 2,
-    },
-    "gc-signin-partner-portal": {
-        "builds": ("frontend", "backend"),
-        "deployment_kinds": ("s3", "ecs"),
-        "ecs_services": 2,
-        "s3_targets": 1,
-        "cloudfront_invalidations": 1,
-    },
-    "gc-sign-in-migration": {
-        "builds": ("frontend", "backend", "load-test"),
-        "deployment_kinds": ("s3", "ecs"),
-        "ecs_services": 1,
-        "s3_targets": 1,
-        "cloudfront_invalidations": 1,
-    },
-    "gc-signin-migration-oidc-rp-simulator": {
-        "builds": ("backend",),
-        "deployment_kinds": ("ecs",),
-        "ecs_services": 1,
-        "s3_targets": 0,
-        "cloudfront_invalidations": 0,
     },
 }
 

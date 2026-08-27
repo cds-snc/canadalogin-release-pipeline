@@ -25,8 +25,7 @@ def validate_repository(
             root / config.environments.version_directory / f"{environment}.json"
         )
 
-    if config.release.enabled:
-        _validate_release_please(config, root)
+    _validate_release_please(config, root)
 
     warnings = []
     codeowners = _find_codeowners(root)

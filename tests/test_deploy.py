@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 import unittest
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -18,6 +19,16 @@ from canadalogin_release.deploy import (
 from canadalogin_release.runtime import RuntimeContext
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
+
+MULTI_SERVICE_CONFIG = """
+schema_version: 2
+application: multi-service
+profile: ecs-service
+environments: [dev]
+backend:
+    dockerfile: backend/Dockerfile
+    services: [web, worker]
+"""
 
 
 class AwsRunner:
@@ -56,6 +67,12 @@ class DeployTest(unittest.TestCase):
         return PipelineConfig.load(
             EXAMPLES / repository / "release-pipeline-configuration.yml"
         )
+
+    def config_from_text(self, content: str) -> PipelineConfig:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "release-pipeline-configuration.yml"
+            path.write_text(content)
+            return PipelineConfig.load(path)
 
     def context(
         self,
@@ -99,7 +116,7 @@ class DeployTest(unittest.TestCase):
         )
 
     def test_s3_preflight_happens_before_sync_and_invalidation(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         runner = AwsRunner(
             [
                 (0, "object\n"),
@@ -140,7 +157,7 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(result.deployment_sha, "abc123")
 
     def test_missing_second_s3_target_aborts_before_first_sync(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         runner = AwsRunner([(0, "object\n"), (0, "")])
         context = self.context(
             Path("."),
@@ -160,7 +177,7 @@ class DeployTest(unittest.TestCase):
         )
 
     def test_inaccessible_distribution_aborts_before_s3_sync(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         runner = AwsRunner(
             [
                 (0, "object\n"),
@@ -189,7 +206,7 @@ class DeployTest(unittest.TestCase):
         )
 
     def test_rendered_empty_s3_prefix_is_forbidden(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         deployment = replace(config.deployments[0], artifact_prefix="{release_tag}")
         config = replace(config, deployments=(deployment,))
         runner = AwsRunner()
@@ -210,7 +227,7 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(runner.commands, [])
 
     def test_empty_s3_prefix_aborts_before_mutation(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         runner = AwsRunner([(0, "")])
         context = self.context(
             Path("."),
@@ -229,7 +246,7 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(runner.commands, [("aws", "s3", "ls", "s3://builds/abc123/")])
 
     def test_ecs_same_image_is_a_no_op(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        config = self.config("canadalogin-user-selfservice-webapp")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
         service = json.dumps(
             {"services": [{"taskDefinition": "task:1"}], "failures": []}
@@ -265,7 +282,7 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(result.unchanged_resources, ("ecs:cluster/service",))
 
     def test_ecs_digest_image_is_a_no_op(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        config = self.config("canadalogin-user-selfservice-webapp")
         repository = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
         image = json.dumps(
             {"imageDetails": [{"imageTags": ["abc123"], "imageDigest": "sha256:abc"}]}
@@ -307,7 +324,7 @@ class DeployTest(unittest.TestCase):
         )
 
     def test_missing_ecr_image_aborts_before_service_mutation(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        config = self.config("canadalogin-user-selfservice-webapp")
         runner = AwsRunner([(0, json.dumps({"imageDetails": []}))])
         context = self.context(
             Path("."),
@@ -326,12 +343,21 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(len(runner.commands), 1)
 
     def test_invalid_ssm_template_aborts_before_ecs_mutation(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
-        service_config = replace(
-            config.deployments[0].services[0], ssm_parameter="/ecs/{unknown}"
+        config = self.config("canadalogin-user-selfservice-webapp")
+        ecs_deployment = next(
+            deployment for deployment in config.deployments if deployment.kind == "ecs"
         )
-        deployment = replace(config.deployments[0], services=(service_config,))
-        config = replace(config, deployments=(deployment,))
+        service_config = replace(
+            ecs_deployment.services[0], ssm_parameter="/ecs/{unknown}"
+        )
+        deployment = replace(ecs_deployment, services=(service_config,))
+        config = replace(
+            config,
+            deployments=tuple(
+                deployment if item is ecs_deployment else item
+                for item in config.deployments
+            ),
+        )
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
         service = json.dumps(
             {"services": [{"taskDefinition": "task:1"}], "failures": []}
@@ -365,7 +391,7 @@ class DeployTest(unittest.TestCase):
         self.assertNotIn("update-service", commands)
 
     def test_ecs_changed_image_registers_waits_and_updates_ssm(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        config = self.config("canadalogin-user-selfservice-webapp")
         repository = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
         image = json.dumps(
             {"imageDetails": [{"imageTags": ["abc123"], "imageDigest": "sha256:abc"}]}
@@ -442,7 +468,7 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(result.changed_resources, ("ecs:cluster/service",))
 
     def test_ecs_deploy_updates_every_service_in_a_multi_service_backend(self) -> None:
-        config = self.config("gc-signin-partner-portal")
+        config = self.config_from_text(MULTI_SERVICE_CONFIG)
         repository = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/partner"
 
         def service_document(task_definition: str, deployment_id: str) -> str:
@@ -553,7 +579,7 @@ class DeployTest(unittest.TestCase):
         )
 
     def test_ecs_wait_failure_includes_rollout_diagnostics(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        config = self.config("canadalogin-user-selfservice-webapp")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
         service = json.dumps(
             {
@@ -687,7 +713,7 @@ class DeployTest(unittest.TestCase):
         )
 
     def test_ecs_wait_timeout_is_bounded_and_includes_last_diagnostics(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        config = self.config("canadalogin-user-selfservice-webapp")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
         service = json.dumps(
             {
@@ -765,7 +791,7 @@ class DeployTest(unittest.TestCase):
         )
 
     def test_force_redeploy_uses_current_task_definition(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
+        config = self.config("canadalogin-user-selfservice-webapp")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
         service = json.dumps(
             {

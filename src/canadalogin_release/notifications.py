@@ -13,7 +13,7 @@ from .config import (
     ConfigError,
     PipelineConfig,
 )
-from .runtime import RuntimeContext, resolve_reference
+from .runtime import RuntimeContext
 
 STATUS_DETAILS = {
     "deploy-start": (":hourglass:", "is being deployed to", "info"),
@@ -79,22 +79,10 @@ def notify(
     except KeyError as error:
         raise ConfigError(f"Unknown notification status {status!r}") from error
 
-    webhooks: tuple[str, ...]
     if channel == "info":
-        if config.notifications.use_platform_defaults:
-            webhooks = default_info_webhook_values(context.secrets)
-        elif config.notifications.info_webhook is None:
-            webhooks = ()
-        else:
-            webhooks = (resolve_reference(config.notifications.info_webhook, context),)
+        webhooks = default_info_webhook_values(context.secrets)
     else:
-        if config.notifications.use_platform_defaults:
-            webhooks = default_alert_webhook_values(context.secrets)
-        else:
-            webhooks = tuple(
-                resolve_reference(reference, context)
-                for reference in config.notifications.alert_webhooks
-            )
+        webhooks = default_alert_webhook_values(context.secrets)
     if not webhooks:
         print(f"No {channel} Slack webhook is configured; skipping notification.")
         return NotificationResult(delivered=0, skipped=True)

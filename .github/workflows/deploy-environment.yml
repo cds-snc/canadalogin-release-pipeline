@@ -75,6 +75,11 @@ on:
         required: false
         default: true
         type: boolean
+      release-pipeline-vars:
+        description: Optional JSON object of non-secret release variables for isolated callers.
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -101,12 +106,41 @@ jobs:
       - name: Set up release tooling
         uses: $/actions/setup
 
+      - name: Resolve AWS roles
+        id: resolve-roles
+        env:
+          ECS_DEFAULT_ROLE: ${{ vars[inputs.ecs-role] }}
+          ECS_ROLE_VARIABLE: ${{ inputs.ecs-role }}
+          RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || '{}' }}
+          S3_DEFAULT_ROLE: ${{ vars[inputs.s3-role] }}
+          S3_ROLE_VARIABLE: ${{ inputs.s3-role }}
+        run: |
+          set -euo pipefail
+
+          resolve_role() {
+            local variable_name="$1"
+            local default_role="$2"
+            if [[ -z "$variable_name" ]]; then
+              return 0
+            fi
+            local role="$default_role"
+            local configured
+            configured=$(jq -r --arg name "$variable_name" '.[$name] // empty' <<< "$RELEASE_PIPELINE_VARS")
+            if [[ -n "$configured" ]]; then
+              role="$configured"
+            fi
+            printf '%s' "${role:-$variable_name}"
+          }
+
+          printf 's3_role=%s\n' "$(resolve_role "$S3_ROLE_VARIABLE" "$S3_DEFAULT_ROLE")" >> "$GITHUB_OUTPUT"
+          printf 'ecs_role=%s\n' "$(resolve_role "$ECS_ROLE_VARIABLE" "$ECS_DEFAULT_ROLE")" >> "$GITHUB_OUTPUT"
+
       - name: Notify Slack about deployment start
         if: inputs.notify
         env:
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          RELEASE_PIPELINE_VARS: ${{ toJSON(vars) }}
+          RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK: ${{ secrets.RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK }}
           RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK_1: ${{ secrets.RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK_1 }}
@@ -129,7 +163,7 @@ jobs:
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           RELEASE_FORCE_REDEPLOY: ${{ inputs.force-redeploy }}
-          RELEASE_PIPELINE_VARS: ${{ toJSON(vars) }}
+          RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
         run: >-
           canadalogin-release hook before-deploy
           --config "$CONFIG_PATH"
@@ -140,7 +174,7 @@ jobs:
         if: inputs.s3-role != ''
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}:role/${{ vars[inputs.s3-role] || inputs.s3-role }}
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}:role/${{ steps.resolve-roles.outputs.s3_role }}
           role-session-name: CanadaLoginReleaseS3Deploy
           aws-region: ${{ inputs.aws-region }}
 
@@ -152,7 +186,7 @@ jobs:
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           RELEASE_FORCE_REDEPLOY: ${{ inputs.force-redeploy }}
-          RELEASE_PIPELINE_VARS: ${{ toJSON(vars) }}
+          RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
           FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET: ${{ secrets.FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET }}
           FRONTEND_APP_S3_BUCKET: ${{ secrets.FRONTEND_APP_S3_BUCKET }}
           FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID }}
@@ -167,7 +201,7 @@ jobs:
         if: inputs.ecs-role != ''
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}:role/${{ vars[inputs.ecs-role] || inputs.ecs-role }}
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}:role/${{ steps.resolve-roles.outputs.ecs_role }}
           role-session-name: CanadaLoginReleaseEcsDeploy
           aws-region: ${{ inputs.aws-region }}
 
@@ -184,7 +218,7 @@ jobs:
         if: inputs.s3-role != ''
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}:role/${{ vars[inputs.s3-role] || inputs.s3-role }}
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}:role/${{ steps.resolve-roles.outputs.s3_role }}
           role-session-name: CanadaLoginReleaseS3Deploy
           aws-region: ${{ inputs.aws-region }}
 
@@ -201,7 +235,7 @@ jobs:
         if: inputs.ecs-role != ''
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
-          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}:role/${{ vars[inputs.ecs-role] || inputs.ecs-role }}
+          role-to-assume: arn:aws:iam::${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}:role/${{ steps.resolve-roles.outputs.ecs_role }}
           role-session-name: CanadaLoginReleaseEcsDeploy
           aws-region: ${{ inputs.aws-region }}
 
@@ -256,7 +290,7 @@ jobs:
         env:
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          RELEASE_PIPELINE_VARS: ${{ toJSON(vars) }}
+          RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK: ${{ secrets.RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK }}
           RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK_1: ${{ secrets.RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK_1 }}
@@ -286,7 +320,7 @@ jobs:
         env:
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          RELEASE_PIPELINE_VARS: ${{ toJSON(vars) }}
+          RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK }}
           RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1 }}

@@ -166,17 +166,13 @@ def create_plan(
                 "ecs_role": roles.get("ecs", ""),
                 "notify": event_name == "workflow_dispatch"
                 or environment in promoted_names,
-                "notify_failure": (
-                    environment in promoted_names
-                    or environment != config.environments.development
-                    or config.notifications.notify_development_failures
-                ),
+                "notify_failure": True,
             }
         )
 
     return Plan(
         event_name=event_name,
-        release_please=event_name == "push" and config.release.enabled,
+        release_please=event_name == "push",
         force_redeploy=force_redeploy,
         promotions=promotions,
         required_builds=tuple(required_builds),
@@ -258,10 +254,7 @@ def _build_matrix_entry(
         "environment": environment,
         "target_environment": target_environment,
         "sha": source_sha,
-        "notify_failure": (
-            target_environment != config.environments.development
-            or config.notifications.notify_development_failures
-        ),
+        "notify_failure": True,
         "kind": build.kind,
         "aws_region": config.aws_region,
         "aws_role": build.aws_role or "",

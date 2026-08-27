@@ -9,13 +9,12 @@ from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.validation import validate_repository
 
 CONFIG = """
-schema_version: 1
+schema_version: 2
 application: Validation example
-
-environments:
-    development: dev
-    deploy: [dev, test, prod]
-    versioned: [test, prod]
+profile: ecs-service
+environments: [dev, test, prod]
+backend:
+    dockerfile: Dockerfile
 """
 
 

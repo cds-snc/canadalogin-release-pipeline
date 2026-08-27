@@ -138,8 +138,13 @@ resource "aws_security_group" "ecs" {
 
 resource "aws_ecr_repository" "app" {
   name                 = var.ecr_repository
-  image_tag_mutability = "IMMUTABLE"
+  image_tag_mutability = "IMMUTABLE_WITH_EXCLUSION"
   force_delete         = true
+
+  image_tag_mutability_exclusion_filter {
+    filter_type = "WILDCARD"
+    filter      = "latest"
+  }
 
   image_scanning_configuration {
     scan_on_push = true

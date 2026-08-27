@@ -29,13 +29,12 @@ class VersionsTest(unittest.TestCase):
             config_path = repository / "release-pipeline-configuration.yml"
             config_path.write_text(
                 """
-schema_version: 1
+schema_version: 2
 application: Release test
-
-environments:
-    development: dev
-    deploy: [dev, test]
-    versioned: [test]
+profile: ecs-service
+environments: [dev, test]
+backend:
+    dockerfile: Dockerfile
 """
             )
             versions = repository / ".deployed_versions"

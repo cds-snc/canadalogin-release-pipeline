@@ -178,6 +178,7 @@ jobs:
       create-deployment: ${{ matrix.create_deployment }}
       expect-health-check-failure: ${{ matrix.expect_health_check_failure }}
       rebuild: ${{ matrix.rebuild }}
+      release-pipeline-vars: ${{ matrix.release_pipeline_vars }}
     secrets: inherit
 
   assert_suite:

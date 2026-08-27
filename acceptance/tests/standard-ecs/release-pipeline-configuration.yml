@@ -1,41 +1,9 @@
-schema_version: 1
+schema_version: 2
 application: release-pipeline acceptance standard ECS
-aws_region: ca-central-1
+profile: ecs-service
+environments: [dev]
 
-environments:
-  development: acceptance-standard
-  deploy: [acceptance-standard]
-  versioned: []
-
-release:
-  enabled: false
-
-builds:
-  - name: backend
-    kind: docker
-    environments: [acceptance-standard]
-    aws_role: cl-acceptance-standard-actions
-    docker:
-      context: acceptance/tests/standard-ecs/app
-      dockerfile: acceptance/tests/standard-ecs/app/Dockerfile
-      repository:
-        value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-standard"
-      tags: [sha]
-      build_args:
-        APP_VERSION: "{release_version}"
-
-deployments:
-  - name: backend
-    kind: ecs
-    environments: [acceptance-standard]
-    aws_role: cl-acceptance-standard-actions
-    repository:
-      value: "{aws_account_id}.dkr.ecr.{aws_region}.amazonaws.com/cl-acceptance-standard"
-    services:
-      - cluster:
-          value: cl-acceptance-standard
-        service:
-          value: cl-acceptance-standard-app
-        container:
-          value: app
-        ssm_parameter: /release-pipeline-acceptance/standard-ecs/container-image
+backend:
+  dockerfile: acceptance/tests/standard-ecs/app/Dockerfile
+  build_args:
+    APP_VERSION: "{release_version}"

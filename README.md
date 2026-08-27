@@ -1,36 +1,50 @@
 # CanadaLogin release system
 
-This repository centralizes the release pipeline used by CanadaLogin applications. A caller owns two small files:
+This repository centralizes the release system used by CanadaLogin applications. A caller owns two small files:
 
-1. `.github/workflows/release-pipeline.yml`, which selects triggers and calls the versioned reusable workflow.
-2. `.github/release-pipeline-configuration.yml`, which declares builds, deployment infrastructure, notifications, and optional hooks.
+1. `.github/workflows/release-pipeline.yml`, which calls the versioned reusable workflow.
+2. `.github/release-pipeline-configuration.yml`, which declares the application profile, environment list, and optional hooks.
 
-Release orchestration stays here. Application-specific commands and infrastructure identifiers stay with the application.
 
 ## What it provides
 
-- release-please with the existing GitHub App credentials and caller-owned configuration
-- `.deployed_versions/<environment>.json` promotion semantics
-- environment-specific command builds and Docker builds
-- immutable SHA images, optional `latest` and semver image tags
-- verified ECR image digests and immutable S3 build prefixes
+- `release-please` integration to manage releases and changelogs
+- `.deployed_versions/<environment>.json` files track deployed versions in source control
+- ECS Fargate + ECR deployments with stability waits
+- ECR immutable image management
 - S3 build artifacts, S3 deployments, and CloudFront invalidations
-- one or many ECS services, stability waits, SSM image parameters, and force redeploy
-- DNS audit and SBOM integrations
-- auxiliary load-test image builds that do not gate application deployment
+- SBOM integration
 - Slack start, success, build failure, and deployment failure notifications
-- pull request comments that identify environment and version changes
-- repository-owned before-deploy, health-check, after-deploy, and failure hooks
-- explicit expected health-check failure assertions for acceptance tests
-- serialized workflow runs and per-environment deployments
+- Repo-defined before-deploy, health-check, after-deploy, and failure hooks
+- Health checks
+- Multi-environment support
 
-All release decisions and AWS command orchestration are implemented in Python. Workflow shell steps only invoke the Python CLI.
+## Deployment behaviour
+
+- The `dev` environment always tracks `main` and is deployd on every merge to main.
+- All other environments track pinned versions in the `.deployed_versions/` directory. These environments are deployed by updating these files and merging to main.
+- By default, `test` is auto-incremented when a release is made using release-please. Thus `test` always tracks the latest release.
+- Other higher environments are manually incremented as needed. Do so using the usual PR process.
+- GitHub CODEOWNERS or branch rulesets can be used to assign required approvers to deploy to specific environments.
+- Deployments are orchestrated in GitHub Actions and can be viewed from the GitHub Actions tab.
 
 ## Quick start
 
+### 1. Setup release-please configuration
+
+See the [release-please repository](https://github.com/googleapis/release-please) for full details. At a minimum, you'll need an appropriate `release-please-config.json` file, and a `.release-please-manifest.json` file. Do not worry about invoking `release-please` from GitHub Actions, the release pipeline handles this.
+
+You will also need to request the release-please GitHub app credentials are added to the repository secrets. Request this from CDS SRE in #sre-security-and-tooling.
+
+### 2. Setup .deployed_versions/ files
+
+The release pipeline uses files in `.deployed_versions/` to track the DESIRED application version for each environment. Create the directory and necessary files, see [this repository](https://github.com/cds-snc/canadalogin-user-selfservice-webapp/tree/main/.deployed_versions) as an example. A file is not needed for `dev` as it always tracks `main`.
+
+### 3. Invoke the release pipeline from GitHub Actions
+
 Copy [the caller workflow](examples/caller/release-pipeline.yml) to `.github/workflows/release-pipeline.yml`. Copy the closest application configuration from [examples](examples) to `.github/release-pipeline-configuration.yml`, then update its resource references and commands.
 
-The caller examples pin a reviewed semver release:
+The caller examples pin a semver release. Optionally replace the release tag with a commit SHA for maximum immutability guarantees.
 
 ```yaml
 jobs:
@@ -39,9 +53,7 @@ jobs:
     secrets: inherit
 ```
 
-Git tags can technically be moved. Protect release tags and never retarget them; callers requiring GitHub's strongest immutable pin should replace `v1.0.6` with that release's full 40-character commit SHA.
-
-Keep the existing release-please files and `.deployed_versions` directory. The shared workflow reads them from the caller repository.
+Read the [configuration guide](/docs/configuration.md) for more information on the `release-pipeline-configuration.yml` file.
 
 ## How it runs
 
@@ -59,46 +71,15 @@ flowchart TD
     H --> J
 ```
 
-Every required build must pass before any environment begins deployment. Components for one environment run in one job, and at most one environment job runs at a time. GitHub does not guarantee matrix ordering, so each environment independently reconciles its pinned desired version. This removes the current frontend-build/backend-deploy split-state failure mode and creates a clear boundary for future rollback work.
-
-Only release-please pull requests require the integration acceptance suite. A
-write-level repository user can request it by commenting `!test`; the request
-starts the manually triggered acceptance workflow, and the release pull request
-remains blocked until the `PR mergeability check` succeeds. The
-`Integration / acceptance tests` status is attached to the exact release commit,
-so a new commit requires a new `!test` run.
+Every required build must pass before any environment begins deployment. Components for one environment run in one job, and at most one environment job runs at a time.
 
 ## Configuration examples
 
-- [Manage application](examples/gc-signin-user-selfservice-webapp/release-pipeline-configuration.yml)
-- [Static website](examples/gc-signin-static-website/release-pipeline-configuration.yml)
-- [Partner portal](examples/gc-signin-partner-portal/release-pipeline-configuration.yml)
-- [Migration application](examples/gc-sign-in-migration/release-pipeline-configuration.yml)
-- [Migration RP simulator](examples/gc-signin-migration-oidc-rp-simulator/release-pipeline-configuration.yml)
+- [Manage application](examples/canadalogin-user-selfservice-webapp/release-pipeline-configuration.yml)
+- [Static website](examples/canadalogin-static-website/release-pipeline-configuration.yml)
 
-These are complete mappings of the five release workflows inspected in August 2026.
-
-## Development
-
-The runtime supports Python 3.11 or newer and requires PyYAML.
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-Validate a configuration:
-
-```sh
-canadalogin-release validate --config examples/gc-signin-user-selfservice-webapp/release-pipeline-configuration.yml
-```
 
 ## Documentation
 
-- [Current pipeline inventory](docs/current-pipeline-inventory.md)
 - [Architecture and GitHub Actions behavior](docs/architecture.md)
 - [Configuration reference](docs/configuration.md)
-- [Migration and rollout](docs/migration.md)
-- [Atomic deployment and rollback roadmap](docs/rollback-roadmap.md)
-- [Validated GitHub Actions experiments](docs/experiments.md)

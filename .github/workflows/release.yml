@@ -53,6 +53,11 @@ on:
         required: false
         default: false
         type: boolean
+      release-pipeline-vars:
+        description: Optional JSON object of non-secret release variables for isolated callers.
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
@@ -222,6 +227,7 @@ jobs:
       sbom-enabled: ${{ matrix.sbom_enabled }}
       sbom-name: ${{ matrix.sbom_name }}
       sbom-dockerfile: ${{ matrix.sbom_dockerfile }}
+      release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
     secrets: inherit
 
   auxiliary_builds:
@@ -258,6 +264,7 @@ jobs:
       sbom-enabled: ${{ matrix.sbom_enabled }}
       sbom-name: ${{ matrix.sbom_name }}
       sbom-dockerfile: ${{ matrix.sbom_dockerfile }}
+      release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
     secrets: inherit
 
   deploy:
@@ -291,4 +298,6 @@ jobs:
       force-redeploy: ${{ fromJSON(needs.plan.outputs.force_redeploy) }}
       notify: ${{ matrix.notify }}
       notify-failure: ${{ matrix.notify_failure }}
+      release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
+
     secrets: inherit

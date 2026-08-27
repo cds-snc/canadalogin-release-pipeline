@@ -15,16 +15,12 @@ class CliTest(unittest.TestCase):
             config = Path(directory) / "release-pipeline-configuration.yml"
             config.write_text(
                 """
-schema_version: 1
+schema_version: 2
 application: CLI test
-
-environments:
-    development: dev
-    deploy: [dev]
-    versioned: []
-
-release:
-    enabled: false
+profile: ecs-service
+environments: [dev]
+backend:
+    dockerfile: Dockerfile
 """
             )
             with patch.dict(os.environ, {"RELEASE_FORCE_REDEPLOY": "invalid"}):
