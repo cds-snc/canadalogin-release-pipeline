@@ -33,11 +33,7 @@ List and validate the test packages locally:
 ```sh
 PYTHONPATH=src python3 acceptance/runner.py list
 PYTHONPATH=src python3 acceptance/runner.py validate --all
-PYTHONPATH=src python3 acceptance/runner.py local --all
 ```
-
-The local preflight does not require AWS or GitHub credentials. Add `--build` to
-run the fixture commands and Docker builds as well.
 
 Before merging a release-please pull request, the live acceptance suite must pass.
 CI will prevent the pull request from merging without the required status.
