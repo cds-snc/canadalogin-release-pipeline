@@ -11,7 +11,7 @@ module "scenario" {
   ecr_repository             = "cl-acceptance-react"
   cluster_name               = "cl-acceptance-react"
   service_name               = "cl-acceptance-react-app"
-  ssm_parameter_name         = "/release-pipeline-acceptance/react-ecs/container-image"
+  ssm_parameter_name         = "/ecs/cl-acceptance-react/cl-acceptance-react-app/container-image"
   vpc_cidr                   = "10.62.0.0/16"
   site_bucket_names = {
     artifacts = "cl-acceptance-react-artifacts-${var.account_id}"
