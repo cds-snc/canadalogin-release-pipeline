@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
-from dataclasses import replace
 from pathlib import Path
 
 from canadalogin_release.config import ConfigError, PipelineConfig
@@ -41,7 +40,7 @@ class PlannerTest(unittest.TestCase):
         return f"{environment}-sha"
 
     def test_push_builds_every_artifact_and_deploys_every_environment(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         with self.repository_with_version("test", "1.2.3") as repository:
             plan = create_plan(
                 config,
@@ -64,7 +63,7 @@ class PlannerTest(unittest.TestCase):
         )
 
     def test_manual_dev_rebuild_still_refreshes_staging_load_test(self) -> None:
-        config = self.config("gc-sign-in-migration")
+        config = self.config("canadalogin-user-selfservice-webapp")
         plan = create_plan(
             config,
             event_name="workflow_dispatch",
@@ -81,7 +80,7 @@ class PlannerTest(unittest.TestCase):
         self.assertEqual(plan.auxiliary_builds[0]["sha"], "staging-sha")
 
     def test_manual_all_deduplicates_shared_artifacts_by_source_sha(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
 
         def resolve_with_current_test(
             config: PipelineConfig,
@@ -116,7 +115,7 @@ class PlannerTest(unittest.TestCase):
         )
 
     def test_pull_request_only_reports_promotions(self) -> None:
-        config = self.config("gc-sign-in-migration")
+        config = self.config("canadalogin-user-selfservice-webapp")
         with self.repository_with_version("prod", "1.2.3") as repository:
             plan = create_plan(
                 config,
@@ -132,7 +131,7 @@ class PlannerTest(unittest.TestCase):
         self.assertFalse(plan.release_please)
 
     def test_empty_work_matrices_have_disabled_sentinels(self) -> None:
-        config = self.config("gc-sign-in-migration")
+        config = self.config("canadalogin-user-selfservice-webapp")
         plan = create_plan(
             config,
             event_name="pull_request",
@@ -152,7 +151,7 @@ class PlannerTest(unittest.TestCase):
     def test_repository_dispatch_rebuilds_and_deploys_only_configured_environment(
         self,
     ) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         plan = create_plan(
             config,
             event_name="repository_dispatch",
@@ -168,7 +167,7 @@ class PlannerTest(unittest.TestCase):
         self.assertEqual(plan.target_environments, ("dev",))
 
     def test_force_redeploy_uses_existing_staging_artifacts(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         plan = create_plan(
             config,
             event_name="workflow_dispatch",
@@ -190,7 +189,7 @@ class PlannerTest(unittest.TestCase):
         self.assertTrue(plan.deployments[0]["notify"])
 
     def test_manual_dev_run_still_refreshes_staging_load_test(self) -> None:
-        config = self.config("gc-sign-in-migration")
+        config = self.config("canadalogin-user-selfservice-webapp")
         plan = create_plan(
             config,
             event_name="workflow_dispatch",
@@ -216,7 +215,7 @@ class PlannerTest(unittest.TestCase):
         )
 
     def test_manual_staging_rebuild_uses_staging_desired_sha(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         plan = create_plan(
             config,
             event_name="workflow_dispatch",
@@ -248,31 +247,13 @@ class PlannerTest(unittest.TestCase):
         )
         self.assertFalse(backend["sbom_enabled"])
 
-    def test_development_build_alerts_follow_notification_policy(self) -> None:
-        config = self.config("gc-signin-migration-oidc-rp-simulator")
-        config = replace(
-            config,
-            notifications=replace(
-                config.notifications, notify_development_failures=False
-            ),
-        )
-        plan = create_plan(
-            config,
-            event_name="push",
-            sha="main-sha",
-            changed_paths=[],
-            sha_resolver=self.resolve_sha,
-        )
-
-        self.assertFalse(plan.required_builds[0]["notify_failure"])
-
     def test_rejects_disabled_manual_environment(self) -> None:
-        config = self.config("gc-signin-partner-portal")
+        config = self.config("canadalogin-user-selfservice-webapp")
         with self.assertRaisesRegex(ConfigError, "Unknown or disabled"):
             create_plan(
                 config,
                 event_name="workflow_dispatch",
-                manual_environment="prod",
+                manual_environment="qa",
                 sha="abc123",
                 changed_paths=[],
             )

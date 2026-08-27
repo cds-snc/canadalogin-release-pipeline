@@ -3,7 +3,7 @@
 This repository centralizes the release system used by CanadaLogin applications. A caller owns two small files:
 
 1. `.github/workflows/release-pipeline.yml`, which calls the versioned reusable workflow.
-2. `.github/release-pipeline-configuration.yml`, which declares builds, deployment infrastructure, notifications, and optional hooks.
+2. `.github/release-pipeline-configuration.yml`, which declares the application profile, environment list, and optional hooks.
 
 
 ## What it provides

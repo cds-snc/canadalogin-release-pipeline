@@ -73,26 +73,20 @@ load_tests:
 
 `enabled` defaults to the standard `load_tests/Dockerfile`. The build uses the staging desired SHA, publishes the SHA and `latest` image tags to `RELEASE_LOAD_TEST_ECR_REPOSITORY`, and is a non-gating staging auxiliary build. It does not update an application ECS service. The source Dockerfile must exist in the caller repository before enabling the capability.
 
-## Schema 1 legacy
-
-The legacy schema 1 parser remains temporarily while the old configurations are
-removed. It is not part of the schema 2 contract. New configurations should use
-schema 2 and should not add schema 1 fields.
-
 ## Top-level fields
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `schema_version` | yes | Must be `1` for compatibility configurations or `2` for the recommended profile configuration. |
+| `schema_version` | yes | Must be `2`. |
 | `application` | yes | Human-readable name used in notifications. |
-| `aws_region` | no | AWS region, default `ca-central-1`. |
-| `environments` | yes | Development, deployable, and versioned environments. |
-| `release` | no | release-please and tag-prefix settings. |
-| `notifications` | no | Legacy schema 1 only. Schema 2 rejects this key and uses standard deployment secrets. |
-| `builds` | no | Artifact build definitions. |
-| `deployments` | no | S3 or ECS deployment definitions. |
+| `profile` | yes | Application shape: `ecs-service`, `spa-ecs`, or `static-site`. |
+| `environments` | no | Deployable environments; defaults to `dev`, `test`, `staging`, and `prod`. |
+| `frontend` | required for `spa-ecs` | Frontend directory, build environment, and CloudFront paths. |
+| `backend` | required for `ecs-service` and `spa-ecs` | Backend Dockerfile, build arguments, and optional service names. |
+| `site` | required for `static-site` | Static-site environment and S3 target definitions. |
+| `load_tests` | no | Optional staging load-test image. |
 | `hooks` | no | Repository-owned lifecycle commands. |
-| `events.repository_dispatch` | no | Dispatch event to environment mappings. |
+| `events.repository_dispatch` | no | Dispatch event to environment mappings; targets must be deployable. |
 
 ## Value references
 
@@ -106,7 +100,7 @@ var: OPTIONAL_VARIABLE
   default: fallback
 ```
 
-Variables come from `${{ toJSON(vars) }}` after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. Named secrets remain supported for genuinely sensitive integrations and legacy schema 1 configurations. Schema 2 uses the standard Slack secrets described below instead of Slack value references.
+Variables come from the release workflow's `RELEASE_PIPELINE_VARS` object after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. Schema 2 uses the standard Slack secrets described below instead of Slack value references.
 
 Supported template fields are:
 
@@ -125,22 +119,12 @@ ECS SSM parameter templates also support `{cluster}`, `{service}`, and `{contain
 ## Environments and release
 
 ```yaml
-environments:
-  development: dev
-  deploy: [dev, test, staging, prod]
-  versioned: [test, staging, prod]
-  version_directory: .deployed_versions
-
-release:
-  enabled: true
-  tag_prefix: v
+environments: [dev, test, staging, prod]
 ```
 
-The development environment always selects the workflow SHA. Each versioned environment reads `<version_directory>/<environment>.json` and resolves `tag_prefix + version` to a Git commit.
+The `dev` environment always selects the workflow SHA. Every other environment reads `.deployed_versions/<environment>.json` and resolves the version with the standard `v` tag prefix.
 
-`versioned` may contain environments not yet listed in `deploy`. The partner portal uses this to retain its future test/staging/prod promotion files while currently deploying only dev.
-
-When release support is enabled, repository validation requires:
+Repository validation requires:
 
 - `.release-please-manifest.json`
 - `release-please-config.json`
@@ -169,62 +153,45 @@ notification steps, so applications do not declare Slack settings in YAML.
 
 Start and success messages are sent for manifest promotions and manual deployments. Failure messages are sent for promoted/non-dev environments and, by default, dev. Every message names its environment.
 
-## Command builds
+## Frontend and static-site builds
+
+For `spa-ecs`, the frontend directory defaults to `frontend`, the output
+directory defaults to `dist`, and the build runs `npm ci` followed by `npm run
+build`. Set `package_manager: pnpm` to use the pinned pnpm toolchain instead.
+Frontend values are declared under `frontend.environment`; the generated S3
+artifact is identified by the commit SHA and is never overwritten.
 
 ```yaml
-builds:
-  - name: frontend
-    kind: command
-    environments: [dev, test, staging, prod]
-    aws_role: github_action_push_S3
-    node_version: "22"
-    gates_deployment: true
-    command:
-      working_directory: frontend
-      steps:
-        - [npm, ci]
-        - [npm, run, build]
-      environment:
-        VITE_API_URL:
-          secret: VITE_API_BASE_URL
-        VITE_ENVIRONMENT: "{environment}"
-        VITE_RELEASE_TAG: "{release_version}"
-    s3_artifact:
-      source: frontend/dist
-      bucket:
-        secret: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET
-      prefix: "{sha}"
-      delete: true
-      skip_if_exists_non_development: false
+frontend:
+  directory: frontend
+  environment:
+    VITE_API_URL:
+      var: VITE_API_URL
+    VITE_ENVIRONMENT: "{environment}"
+  delete_stale_files: true
+  invalidation_paths: [/index.html, /assets/*]
 ```
 
-The artifact prefix is an immutable identity. The build checks it before upload and reuses an existing prefix rather than overwriting it. `skip_if_exists_non_development` is retained for compatibility with existing configurations; all environments now avoid overwriting an existing prefix.
+For `static-site`, the `site.targets` mapping declares one bucket and optional
+CloudFront invalidation paths per target. The build output defaults to
+`website/_site` and is stored in `RELEASE_STATIC_ARTIFACT_BUCKET`.
 
-Commands are arrays, not shell strings. Each command runs with Python `subprocess` and `shell=False`.
-
-Build and source environments must be listed in `environments.deploy`. Repository-dispatch targets must also be deployable; typos are rejected while loading the configuration. Build and hook commands do not receive AWS or GitHub credentials.
+Commands are argv arrays inside the implementation and run with Python
+`subprocess` and `shell=False`. Build and hook commands do not receive AWS or
+GitHub credentials.
 
 ## Docker builds
 
 ```yaml
-builds:
-  - name: backend
-    kind: docker
-    environments: [dev]
-    aws_role: github_action_manage_push_ecr_ecs
-    dns_audit: true
-    shared_artifact: true
-    docker:
-      context: backend
-      dockerfile: backend/Dockerfile
-      repository:
-        var: ARTIFACT_ECR_REPOSITORY
-      tags: [sha, latest, release]
-      build_args:
-        APP_VERSION: "{release_version}"
-    sbom:
-      name: application-backend
-      dockerfile: backend/Dockerfile
+schema_version: 2
+application: example-service
+profile: ecs-service
+environments: [dev, test, staging, prod]
+
+backend:
+  dockerfile: backend/Dockerfile
+  build_args:
+    APP_VERSION: "{release_version}"
 ```
 
 Allowed tag modes are:
@@ -235,52 +202,49 @@ Allowed tag modes are:
 
 When a Docker repository is an AWS ECR repository and the build publishes `sha` or `release`, the repository must use `IMMUTABLE` or `IMMUTABLE_WITH_EXCLUSION` tag mutability. SHA and release tags are checked before any push; an existing SHA image is reused only when every other non-excluded tag exists and resolves to the same digest. If `latest` is configured, it must be an explicit mutability exclusion. Successful ECR builds record the image digest in their workflow output.
 
-Set `shared_artifact: true` when one build definition supplies every deployment environment, such as a backend image built with dev credentials. A manual non-dev rebuild then builds the selected environment's desired SHA instead of current main. Set `source_environment: staging` to always build staging's desired SHA, as used by load-test images. Non-gating source-environment builds run on every manual invocation to preserve the current load-test refresh behavior. The selected source SHA controls checkout, tags, build arguments, S3 prefixes, and release metadata. Set `gates_deployment: false` for an auxiliary artifact that must not block an otherwise valid application deployment.
+The backend image is built once with the development environment's contract and
+is reused by every deployment environment. An enabled `load_tests` block adds a
+non-gating staging image using `RELEASE_LOAD_TEST_ECR_REPOSITORY`; it does not
+update an application ECS service. The selected source SHA controls checkout,
+tags, build arguments, S3 prefixes, and release metadata.
 
 The shared SBOM action submits dependency snapshots and therefore requires `contents: write`. A snapshot is generated only when the built source SHA equals the workflow SHA, which is the SHA the pinned action records. Rebuilding an older pinned environment skips a duplicate, incorrectly attributed snapshot; that source received its snapshot when it was originally built and released.
 
 ## S3 and CloudFront deployments
 
 ```yaml
-deployments:
-  - name: frontend
-    kind: s3
-    aws_role: github_action_push_S3
-    artifact_bucket:
-      secret: FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET
-    artifact_prefix: "{sha}"
-    targets:
-      - bucket:
-          secret: FRONTEND_APP_S3_BUCKET
-        delete: true
-    invalidations:
-      - distribution:
-          secret: CLOUDFRONT_DISTRIBUTION_ID
-        paths: [/index.html, /assets/*]
+schema_version: 2
+application: example-spa
+profile: spa-ecs
+
+frontend:
+  invalidation_paths: [/index.html, /assets/*]
 ```
 
-Any number of targets and invalidations may be declared. Every S3 artifact is checked for at least one object before the first target sync starts. An empty prefix is treated as missing, even when `aws s3 ls` exits successfully.
+The frontend profile uses the contract variables `RELEASE_FRONTEND_ARTIFACT_BUCKET`,
+`RELEASE_FRONTEND_BUCKET`, and `RELEASE_FRONTEND_DISTRIBUTION_ID`. A static-site
+may declare any number of targets and invalidations under `site.targets`. Every
+S3 artifact is checked for at least one object before the first target sync
+starts. An empty prefix is treated as missing, even when `aws s3 ls` exits
+successfully.
 
 ## ECS and SSM deployments
 
 ```yaml
-deployments:
-  - name: backend
-    kind: ecs
-    aws_role: github_action_manage_push_ecr_ecs
-    repository:
-      var: ARTIFACT_ECR_REPOSITORY
-    services:
-      - cluster:
-          var: ECS_CLUSTER
-        service:
-          var: ECS_SERVICE
-        container:
-          var: ECS_CONTAINER
-        ssm_parameter: /ecs/{cluster}/{service}/container-image
+schema_version: 2
+application: example-service
+profile: ecs-service
+
+backend:
+  dockerfile: backend/Dockerfile
+  services: [web, worker]
 ```
 
-Multiple services may share one image, as in partner portal web and worker. All services of one kind in one environment must use the same role so the environment remains one job.
+The default backend service is named `backend`. Set `backend.services` when one
+image serves multiple ECS services. The generated contract names are
+`RELEASE_ECS_<SERVICE>_CLUSTER`, `RELEASE_ECS_<SERVICE>_SERVICE`, and
+`RELEASE_ECS_<SERVICE>_CONTAINER`; the default service uses the unsuffixed
+`RELEASE_ECS_CLUSTER`, `RELEASE_ECS_SERVICE`, and `RELEASE_ECS_CONTAINER` keys.
 
 Before any S3 or ECS mutation, the environment workflow verifies all S3 artifacts and targets, CloudFront distributions, desired ECR image tags and digests, ECS services, task definitions, containers, and SSM parameter templates. Changed ECS task definitions use the verified ECR digest rather than a mutable tag. Structured ECS responses are consumed without writing them to workflow logs. ECS updates retain the current pipeline's `propagate-tags: SERVICE` behavior. Task-definition tags are not copied because the current deployment roles do not grant the additional tag read/write permissions.
 

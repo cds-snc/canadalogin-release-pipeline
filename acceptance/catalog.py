@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -54,11 +55,50 @@ class AcceptanceTest:
             "create_deployment": self.release["create_deployment"],
             "expect_health_check_failure": self.release["expect_health_check_failure"],
             "rebuild": self.release["rebuild"],
+            "release_pipeline_vars": self.release_pipeline_vars(
+                release_account_id, release_region
+            ),
         }
+
+    def release_pipeline_vars(self, account_id: str, region: str) -> str:
+        values = {
+            "RELEASE_ECS_ROLE": self.verification_role,
+            "RELEASE_ECR_REPOSITORY": (
+                f"{account_id}.dkr.ecr.{region}.amazonaws.com/"
+                f"{_resolve_resource(self.resources['ecr_repository'], account_id, region)}"
+            ),
+            "RELEASE_ECS_CLUSTER": _resolve_resource(
+                self.resources["cluster"], account_id, region
+            ),
+            "RELEASE_ECS_SERVICE": _resolve_resource(
+                self.resources["service"], account_id, region
+            ),
+            "RELEASE_ECS_CONTAINER": "app",
+        }
+        if "artifact_bucket" in self.resources:
+            values.update(
+                {
+                    "RELEASE_S3_ROLE": self.verification_role,
+                    "RELEASE_FRONTEND_ARTIFACT_BUCKET": _resolve_resource(
+                        self.resources["artifact_bucket"], account_id, region
+                    ),
+                    "RELEASE_FRONTEND_BUCKET": _resolve_resource(
+                        self.resources["site_bucket"], account_id, region
+                    ),
+                }
+            )
+        return json.dumps(values, separators=(",", ":"), sort_keys=True)
 
 
 def relative_path(value: Path) -> str:
     return value.resolve().relative_to(ROOT.resolve()).as_posix()
+
+
+def _resolve_resource(value: str, account_id: str, region: str) -> str:
+    try:
+        return value.format(aws_account_id=account_id, aws_region=region)
+    except (KeyError, ValueError) as error:
+        raise CatalogError(f"Invalid resource placeholder {value!r}: {error}") from error
 
 
 def _mapping(value: object, field: str) -> dict[str, object]:

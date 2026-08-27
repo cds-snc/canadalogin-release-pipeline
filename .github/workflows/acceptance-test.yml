@@ -55,6 +55,10 @@ on:
         description: Rebuild artifacts during the test deployment.
         required: true
         type: boolean
+      release-pipeline-vars:
+        description: Per-test non-secret schema 2 infrastructure variables.
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -146,6 +150,7 @@ jobs:
       create-deployment: ${{ inputs.create-deployment }}
       expect-health-check-failure: ${{ inputs.expect-health-check-failure }}
       rebuild: ${{ inputs.rebuild }}
+      release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
     secrets: inherit
 
   verify:

@@ -65,7 +65,7 @@ class BuildTest(unittest.TestCase):
         )
 
     def test_command_build_resolves_environment_and_uploads_s3_artifact(self) -> None:
-        config = self.config("gc-signin-partner-portal")
+        config = self.config("canadalogin-user-selfservice-webapp")
         runner = RecordingRunner()
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
@@ -77,8 +77,8 @@ class BuildTest(unittest.TestCase):
                     repository,
                     "dev",
                     variables={
-                        "VITE_API_BASE_URL": "https://api.example",
-                        "VITE_APP_ENVIRONMENT": "development",
+                        "VITE_BACKEND_API_URL": "https://api.example",
+                        "VITE_GOOGLE_ANALYTICS_ID": "G-123",
                         "RELEASE_FRONTEND_ARTIFACT_BUCKET": "build-bucket",
                     },
                 ),
@@ -86,22 +86,21 @@ class BuildTest(unittest.TestCase):
             )
 
         self.assertEqual(result.release_version, "v1.2.3")
-        self.assertEqual(runner.commands[0][0], ("corepack", "enable"))
+        self.assertEqual(runner.commands[0][0], ("npm", "ci"))
         command_environment = runner.commands[0][2]
         self.assertEqual(
-            command_environment["VITE_API_BASE_URL"], "https://api.example"
+            command_environment["VITE_BACKEND_API_URL"], "https://api.example"
         )
-        self.assertEqual(
-            command_environment["VITE_AUTH_POST_LOGIN_PATH"], "/your-applications"
-        )
+        self.assertEqual(command_environment["VITE_GOOGLE_ANALYTICS_ID"], "G-123")
+        self.assertEqual(command_environment["VITE_ENVIRONMENT"], "dev")
         self.assertEqual(command_environment["VITE_RELEASE_TAG"], "v1.2.3")
         self.assertNotIn("BUILD_SECRET_1", runner.unset_environments[0])
-        self.assertEqual(runner.commands[-1][0][-1], "--delete")
+        self.assertNotIn("--delete", runner.commands[-1][0])
         self.assertIn("AWS_ACCESS_KEY_ID", runner.unset_environments[0])
         self.assertIn("GITHUB_TOKEN", runner.unset_environments[0])
 
     def test_docker_build_applies_sha_latest_release_and_build_args(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         runner = RecordingRunner()
         with tempfile.TemporaryDirectory() as directory:
             result = execute_build(
@@ -127,7 +126,7 @@ class BuildTest(unittest.TestCase):
         self.assertIn("GITHUB_TOKEN", runner.unset_environments[0])
 
     def test_source_sha_controls_checkout_tags_and_result_identity(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         runner = RecordingRunner()
         git_commands: list[tuple[tuple[str, ...], Path]] = []
         with tempfile.TemporaryDirectory() as directory:
@@ -157,7 +156,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(result.release_version, "v1.2.2")
 
     def test_non_development_command_build_reuses_existing_artifact(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         runner = RecordingRunner(responses=[(0, ""), (0, ""), (0, "object\n")])
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
@@ -182,7 +181,7 @@ class BuildTest(unittest.TestCase):
         )
 
     def test_empty_s3_prefix_is_not_reused(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         runner = RecordingRunner(responses=[(0, ""), (0, ""), (0, "")])
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
@@ -204,7 +203,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(runner.commands[-1][0][:3], ("aws", "s3", "sync"))
 
     def test_rendered_empty_build_prefix_is_forbidden(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         artifact = replace(config.builds[0].s3_artifact, prefix="{release_tag}")
         build = replace(config.builds[0], s3_artifact=artifact)
         config = replace(config, builds=(build,))
@@ -231,7 +230,7 @@ class BuildTest(unittest.TestCase):
         self.assertFalse(any(command[0][0] == "aws" for command in runner.commands))
 
     def test_existing_artifact_is_not_overwritten(self) -> None:
-        config = self.config("gc-signin-static-website")
+        config = self.config("canadalogin-static-website")
         runner = RecordingRunner(responses=[(0, ""), (0, ""), (0, "object\n")])
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
@@ -257,7 +256,7 @@ class BuildTest(unittest.TestCase):
     def test_ecr_sha_build_requires_immutable_repository_and_records_digest(
         self,
     ) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         runner = RecordingRunner(
             responses=[
                 (
@@ -304,7 +303,7 @@ class BuildTest(unittest.TestCase):
         self.assertIn("describe-repositories", runner.commands[0][0])
 
     def test_ecr_sha_build_reuses_existing_tag(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         runner = RecordingRunner(
             responses=[
                 (
@@ -346,7 +345,7 @@ class BuildTest(unittest.TestCase):
         self.assertFalse(any(command[0][0] == "docker" for command in runner.commands))
 
     def test_ecr_existing_sha_rejects_missing_release_tag(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         runner = RecordingRunner(
             responses=[
                 (
@@ -390,7 +389,7 @@ class BuildTest(unittest.TestCase):
         self.assertFalse(any(command[0][0] == "docker" for command in runner.commands))
 
     def test_ecr_existing_sha_rejects_divergent_release_tag(self) -> None:
-        config = self.config("gc-signin-user-selfservice-webapp")
+        config = self.config("canadalogin-user-selfservice-webapp")
         runner = RecordingRunner(
             responses=[
                 (
