@@ -32,6 +32,8 @@ jobs:
     secrets: inherit
 ```
 
+Read the [configuration guide](/docs/configuration.md) for more information on the `release-pipeline-configuration.yml` file.
+
 TODO: Need info on setting up .deployed_versions and release-please config for net-new repos.
 
 ## How it runs
