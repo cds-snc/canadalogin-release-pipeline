@@ -48,7 +48,7 @@ class VerificationContext:
         return cls(
             resources=resources,
             release_sha=os.environ.get("RELEASE_SHA", ""),
-            account_id=os.environ.get("AWS_ACCOUNT_ID", "014097726303"),
+            account_id=os.environ.get("AWS_ACCOUNT_ID", "429694360874"),
             region=os.environ.get("AWS_REGION")
             or os.environ.get("AWS_DEFAULT_REGION", "ca-central-1"),
             expected_result=os.environ.get("EXPECTED_RESULT", "success"),

@@ -1,7 +1,7 @@
 variable "aws_account_id" {
-  description = "Scratch account hosting the acceptance resources."
+  description = "AWS account hosting the acceptance resources."
   type        = string
-  default     = "014097726303"
+  default     = "429694360874"
 }
 
 variable "aws_region" {
