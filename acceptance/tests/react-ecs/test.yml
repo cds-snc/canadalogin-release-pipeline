@@ -23,6 +23,6 @@ verification:
     ecr_repository: cl-acceptance-react
     cluster: cl-acceptance-react
     service: cl-acceptance-react-app
-    ssm_parameter: /release-pipeline-acceptance/react-ecs/container-image
+    ssm_parameter: /ecs/cl-acceptance-react/cl-acceptance-react-app/container-image
     site_bucket: cl-acceptance-react-site-{aws_account_id}
     artifact_bucket: cl-acceptance-react-artifacts-{aws_account_id}

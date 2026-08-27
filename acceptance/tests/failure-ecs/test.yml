@@ -23,4 +23,4 @@ verification:
     ecr_repository: cl-acceptance-failure
     cluster: cl-acceptance-failure
     service: cl-acceptance-failure-app
-    ssm_parameter: /release-pipeline-acceptance/failure-ecs/container-image
+    ssm_parameter: /ecs/cl-acceptance-failure/cl-acceptance-failure-app/container-image
