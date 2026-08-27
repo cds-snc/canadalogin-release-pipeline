@@ -31,7 +31,7 @@ data "aws_iam_policy_document" "terraform_assume_role" {
 resource "aws_iam_role" "terraform" {
   name               = "cl-acceptance-terraform"
   assume_role_policy = data.aws_iam_policy_document.terraform_assume_role.json
-  description        = "Scratch-only Terraform role for release pipeline acceptance infrastructure"
+  description        = "Terraform role for release pipeline acceptance infrastructure"
 }
 
 data "aws_iam_policy_document" "terraform" {

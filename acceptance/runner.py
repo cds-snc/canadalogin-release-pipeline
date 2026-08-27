@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     matrix_parser.add_argument("--github-output", action="store_true")
     matrix_parser.add_argument(
-        "--aws-account-id", default=os.environ.get("AWS_ACCOUNT_ID", "014097726303")
+        "--aws-account-id", default=os.environ.get("AWS_ACCOUNT_ID", "429694360874")
     )
     matrix_parser.add_argument(
         "--aws-region", default=os.environ.get("AWS_REGION", "ca-central-1")
