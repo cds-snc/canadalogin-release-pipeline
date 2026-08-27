@@ -1,6 +1,6 @@
 # CanadaLogin release system
 
-This repository centralizes the release pipeline used by CanadaLogin applications. A caller owns two small files:
+This repository centralizes the release system used by CanadaLogin applications. A caller owns two small files:
 
 1. `.github/workflows/release-pipeline.yml`, which calls the versioned reusable workflow.
 2. `.github/release-pipeline-configuration.yml`, which declares builds, deployment infrastructure, notifications, and optional hooks.
@@ -19,7 +19,28 @@ This repository centralizes the release pipeline used by CanadaLogin application
 - Health checks
 - Multi-environment support
 
+## Deployment behaviour
+
+- The `dev` environment always tracks `main` and is deployd on every merge to main.
+- All other environments track pinned versions in the `.deployed_versions/` directory. These environments are deployed by updating these files and merging to main.
+- By default, `test` is auto-incremented when a release is made using release-please. Thus `test` always tracks the latest release.
+- Other higher environments are manually incremented as needed. Do so using the usual PR process.
+- GitHub CODEOWNERS or branch rulesets can be used to assign required approvers to deploy to specific environments.
+- Deployments are orchestrated in GitHub Actions and can be viewed from the GitHub Actions tab.
+
 ## Quick start
+
+### 1. Setup release-please configuration
+
+See the [release-please repository](https://github.com/googleapis/release-please) for full details. At a minimum, you'll need an appropriate `release-please-config.json` file, and a `.release-please-manifest.json` file. Do not worry about invoking `release-please` from GitHub Actions, the release pipeline handles this.
+
+You will also need to request the release-please GitHub app credentials are added to the repository secrets. Request this from CDS SRE in #sre-security-and-tooling.
+
+### 2. Setup .deployed_versions/ files
+
+The release pipeline uses files in `.deployed_versions/` to track the DESIRED application version for each environment. Create the directory and necessary files, see [this repository](https://github.com/cds-snc/canadalogin-user-selfservice-webapp/tree/main/.deployed_versions) as an example. A file is not needed for `dev` as it always tracks `main`.
+
+### 3. Invoke the release pipeline from GitHub Actions
 
 Copy [the caller workflow](examples/caller/release-pipeline.yml) to `.github/workflows/release-pipeline.yml`. Copy the closest application configuration from [examples](examples) to `.github/release-pipeline-configuration.yml`, then update its resource references and commands.
 
@@ -33,8 +54,6 @@ jobs:
 ```
 
 Read the [configuration guide](/docs/configuration.md) for more information on the `release-pipeline-configuration.yml` file.
-
-TODO: Need info on setting up .deployed_versions and release-please config for net-new repos.
 
 ## How it runs
 
