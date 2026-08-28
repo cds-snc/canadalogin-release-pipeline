@@ -2,9 +2,9 @@
 
 The default caller configuration path is `.github/release-pipeline-configuration.yml`. Unknown or malformed values fail before release-please, builds, or deployments begin.
 
-## Schema 2
+## Configuration schema
 
-Schema 2 is the recommended caller interface. It describes the application profile and only the values that are genuinely application-specific. Release-please, environment promotion, artifact identity, AWS region, concurrency, approvals, notifications, and deployment safety remain central behavior.
+The only currently supported schema is `schema_version: 2`. It describes the application profile and only the values that are genuinely application-specific. Release-please, environment promotion, artifact identity, AWS region, concurrency, approvals, notifications, and deployment safety remain central behavior.
 
 ```yaml
 schema_version: 2
@@ -33,13 +33,13 @@ The supported profiles are:
 - `spa-ecs`: one frontend build published to S3 and one shared Dockerfile-backed ECS image.
 - `static-site`: one static build published to the declared S3 targets, with one target and CloudFront invalidation per site language or domain.
 
-Schema 2 backend blocks accept `dockerfile` only. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
+Backend blocks accept `dockerfile` only. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
 
 Frontend and static-site installs use `npm ci` with the repository lockfile. The pnpm exception uses the declared pnpm version and `--frozen-lockfile`. Node.js defaults to `22`.
 
 ### Infrastructure contract
 
-Schema 2 resource names are supplied as GitHub **Variables** on each deployment environment. They are not derived from the display name in `application` and are not secrets. Terraform must publish or maintain these keys as part of the application's release contract:
+Resource names are supplied as GitHub **Variables** on each deployment environment. They are not derived from the display name in `application` and are not secrets. Terraform must publish or maintain these keys as part of the application's release contract:
 
 | Variable | Used by |
 | --- | --- |
@@ -100,7 +100,7 @@ var: OPTIONAL_VARIABLE
   default: fallback
 ```
 
-Variables come from the release workflow's `RELEASE_PIPELINE_VARS` object after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. Schema 2 uses the standard Slack secrets described below instead of Slack value references.
+Variables come from the release workflow's `RELEASE_PIPELINE_VARS` object after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. The standard Slack secrets described below are used instead of Slack value references.
 
 Supported template fields are:
 
@@ -133,7 +133,7 @@ Repository validation requires:
 
 ## Notifications
 
-Schema 2 configurations contain no Slack fields. Register these as optional
+Configurations contain no Slack fields. Register these as optional
 GitHub Actions **secrets** on each deployment environment:
 
 | Secret | Behavior |
