@@ -53,10 +53,10 @@ class PlannerTest(unittest.TestCase):
 
         self.assertTrue(plan.release_please)
         self.assertEqual([item.environment for item in plan.promotions], ["test"])
-        self.assertEqual(len(plan.required_builds), 5)
-        self.assertEqual(len(plan.auxiliary_builds), 1)
+        self.assertEqual(len(plan.required_builds), 6)
         self.assertEqual(plan.target_environments, ("dev", "test", "staging", "prod"))
-        self.assertEqual(plan.auxiliary_builds[0]["sha"], "staging-sha")
+        self.assertEqual(plan.required_builds[-1]["name"], "load-test")
+        self.assertEqual(plan.required_builds[-1]["sha"], "staging-sha")
         self.assertEqual(
             [deployment["sha"] for deployment in plan.deployments],
             ["abc123", "test-sha", "staging-sha", "prod-sha"],
@@ -74,10 +74,10 @@ class PlannerTest(unittest.TestCase):
             sha_resolver=self.resolve_sha,
         )
 
-        self.assertEqual(
-            [build["name"] for build in plan.auxiliary_builds], ["load-test"]
+        load_test = next(
+            build for build in plan.required_builds if build["name"] == "load-test"
         )
-        self.assertEqual(plan.auxiliary_builds[0]["sha"], "staging-sha")
+        self.assertEqual(load_test["sha"], "staging-sha")
 
     def test_manual_all_deduplicates_shared_artifacts_by_source_sha(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")
@@ -141,7 +141,6 @@ class PlannerTest(unittest.TestCase):
 
         for output_name in (
             "required_build_matrix",
-            "auxiliary_build_matrix",
             "deployment_matrix",
         ):
             with self.subTest(output_name=output_name):
@@ -180,11 +179,10 @@ class PlannerTest(unittest.TestCase):
         )
 
         self.assertTrue(plan.force_redeploy)
-        self.assertFalse(plan.required_builds)
         self.assertEqual(
-            [build["name"] for build in plan.auxiliary_builds], ["load-test"]
+            [build["name"] for build in plan.required_builds], ["load-test"]
         )
-        self.assertEqual(plan.auxiliary_builds[0]["sha"], "staging-sha")
+        self.assertEqual(plan.required_builds[0]["sha"], "staging-sha")
         self.assertEqual(plan.target_environments, ("staging",))
         self.assertTrue(plan.deployments[0]["notify"])
 
@@ -200,7 +198,6 @@ class PlannerTest(unittest.TestCase):
             sha_resolver=self.resolve_sha,
         )
 
-        self.assertFalse(plan.required_builds)
         self.assertEqual(
             [
                 (
@@ -209,7 +206,7 @@ class PlannerTest(unittest.TestCase):
                     build["target_environment"],
                     build["sha"],
                 )
-                for build in plan.auxiliary_builds
+                for build in plan.required_builds
             ],
             [("load-test", "staging", "staging", "staging-sha")],
         )
@@ -239,9 +236,9 @@ class PlannerTest(unittest.TestCase):
             [
                 ("frontend", "staging", "staging", "staging-sha"),
                 ("backend", "dev", "staging", "staging-sha"),
+                ("load-test", "staging", "staging", "staging-sha"),
             ],
         )
-        self.assertEqual(plan.auxiliary_builds[0]["sha"], "staging-sha")
         backend = next(
             build for build in plan.required_builds if build["name"] == "backend"
         )

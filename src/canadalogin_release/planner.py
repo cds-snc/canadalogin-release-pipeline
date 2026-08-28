@@ -27,7 +27,6 @@ class Plan:
     force_redeploy: bool
     promotions: tuple[Promotion, ...]
     required_builds: tuple[dict[str, object], ...]
-    auxiliary_builds: tuple[dict[str, object], ...]
     deployments: tuple[dict[str, object], ...]
 
     @property
@@ -41,7 +40,6 @@ class Plan:
             "force_redeploy": _boolean(self.force_redeploy),
             "has_promotions": _boolean(bool(self.promotions)),
             "has_required_builds": _boolean(bool(self.required_builds)),
-            "has_auxiliary_builds": _boolean(bool(self.auxiliary_builds)),
             "has_deployments": _boolean(bool(self.deployments)),
             "promotion_environments": json.dumps(
                 [promotion.environment for promotion in self.promotions],
@@ -50,9 +48,6 @@ class Plan:
             "promotions": json.dumps(promotion_values, separators=(",", ":")),
             "required_build_matrix": _matrix(
                 self.required_builds, _empty_build_matrix_entry()
-            ),
-            "auxiliary_build_matrix": _matrix(
-                self.auxiliary_builds, _empty_build_matrix_entry()
             ),
             "deployment_matrix": _matrix(
                 self.deployments, _empty_deployment_matrix_entry()
@@ -111,7 +106,6 @@ def create_plan(
         event_name == "workflow_dispatch" and rebuild
     )
     required_builds: list[dict[str, object]] = []
-    auxiliary_builds: list[dict[str, object]] = []
     if should_build:
         for build in config.builds:
             for environment, target_environment, source_sha in _planned_builds(
@@ -130,13 +124,10 @@ def create_plan(
                     source_sha=source_sha,
                     workflow_sha=sha,
                 )
-                destination = (
-                    required_builds if build.gates_deployment else auxiliary_builds
-                )
-                destination.append(entry)
+                required_builds.append(entry)
     if event_name == "workflow_dispatch":
         for build in config.builds:
-            if build.gates_deployment or not build.source_environment:
+            if not build.source_environment:
                 continue
             entry = _build_matrix_entry(
                 config,
@@ -148,9 +139,9 @@ def create_plan(
             )
             if not any(
                 existing["name"] == entry["name"] and existing["sha"] == entry["sha"]
-                for existing in auxiliary_builds
+                for existing in required_builds
             ):
-                auxiliary_builds.append(entry)
+                required_builds.append(entry)
 
     promoted_names = {promotion.environment for promotion in promotions}
     deployments = []
@@ -176,7 +167,6 @@ def create_plan(
         force_redeploy=force_redeploy,
         promotions=promotions,
         required_builds=tuple(required_builds),
-        auxiliary_builds=tuple(auxiliary_builds),
         deployments=tuple(deployments),
     )
 

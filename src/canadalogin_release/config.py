@@ -167,7 +167,6 @@ class BuildConfig:
     environments: tuple[str, ...]
     aws_role: str | None = None
     dns_audit: bool = False
-    gates_deployment: bool = True
     shared_artifact: bool = False
     node_version: str | None = None
     source_environment: str | None = None
@@ -690,7 +689,6 @@ def _parse_v2_load_tests(
         environments=("staging",),
         aws_role=SCHEMA_TWO_ECS_ROLE,
         source_environment="staging",
-        gates_deployment=False,
         docker=DockerBuildConfig(
             context=dockerfile.parent,
             dockerfile=dockerfile,
