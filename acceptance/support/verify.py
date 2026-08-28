@@ -181,8 +181,13 @@ def verify_ecs(resources: Mapping[str, str], release_sha: str, digest: str) -> N
     )
     service = services[0]
     require(isinstance(service, dict), "ECS returned an invalid service.")
+    desired_count = service.get("desiredCount")
+    running_count = service.get("runningCount")
     require(
-        service.get("runningCount") == service.get("desiredCount") > 0,
+        isinstance(desired_count, int)
+        and desired_count > 0
+        and isinstance(running_count, int)
+        and running_count >= desired_count,
         "The ECS service is not at desired capacity.",
     )
     require(
@@ -192,11 +197,26 @@ def verify_ecs(resources: Mapping[str, str], release_sha: str, digest: str) -> N
 
     deployments = service.get("deployments")
     require(
-        isinstance(deployments, list) and len(deployments) == 1,
-        "The ECS service has an unfinished deployment.",
+        isinstance(deployments, list),
+        "The ECS service has no deployment information.",
     )
-    deployment = deployments[0]
+    primary_deployments = [
+        deployment
+        for deployment in deployments
+        if isinstance(deployment, dict) and deployment.get("status") == "PRIMARY"
+    ]
+    require(
+        len(primary_deployments) == 1,
+        "The ECS service has no unique primary deployment.",
+    )
+    deployment = primary_deployments[0]
     require(isinstance(deployment, dict), "ECS returned an invalid deployment.")
+    require(
+        deployment.get("desiredCount") == desired_count
+        and deployment.get("runningCount") == desired_count
+        and deployment.get("pendingCount", 0) == 0,
+        "The primary ECS deployment is not at desired capacity.",
+    )
     require(
         deployment.get("status") == "PRIMARY",
         "The expected ECS deployment is not primary.",

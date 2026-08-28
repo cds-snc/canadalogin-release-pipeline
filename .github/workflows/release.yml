@@ -278,8 +278,7 @@ jobs:
         (needs.required_builds.result == 'success' || needs.required_builds.result == 'skipped')
       }}
     strategy:
-      fail-fast: true
-      max-parallel: 1
+      fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.deployment_matrix) }}
     uses: $/.github/workflows/deploy-environment.yml
     with:

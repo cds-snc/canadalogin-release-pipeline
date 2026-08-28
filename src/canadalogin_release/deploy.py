@@ -297,26 +297,33 @@ def _ecs_service_is_stable(
     if not isinstance(service, Mapping):
         return False
     deployments = service.get("deployments", [])
-    if not isinstance(deployments, list) or len(deployments) != 1:
+    if not isinstance(deployments, list):
         return False
-    deployment = deployments[0]
-    if not isinstance(deployment, Mapping):
+
+    matching_deployments = [
+        deployment
+        for deployment in deployments
+        if isinstance(deployment, Mapping)
+        and deployment.get("status") == "PRIMARY"
+        and (
+            expected_task_definition_arn is None
+            or deployment.get("taskDefinition") == expected_task_definition_arn
+        )
+        and (
+            previous_deployment_id is None
+            or deployment.get("id") != previous_deployment_id
+        )
+    ]
+    if len(matching_deployments) != 1:
         return False
-    if deployment.get("status") != "PRIMARY":
-        return False
-    if (
-        expected_task_definition_arn is not None
-        and deployment.get("taskDefinition") != expected_task_definition_arn
-    ):
-        return False
-    if (
-        previous_deployment_id is not None
-        and deployment.get("id") == previous_deployment_id
-    ):
-        return False
+
+    deployment = matching_deployments[0]
+    desired_count = service.get("desiredCount")
     return (
-        service.get("runningCount") == service.get("desiredCount")
+        deployment.get("desiredCount") == desired_count
+        and deployment.get("runningCount") == desired_count
         and service.get("pendingCount", 0) == 0
+        and deployment.get("pendingCount", 0) == 0
         and deployment.get("rolloutState", "COMPLETED") == "COMPLETED"
     )
 
@@ -371,6 +378,9 @@ def _ecs_service_diagnostics(document: Mapping[str, Any]) -> str:
                     "status": deployment.get("status"),
                     "rollout_state": deployment.get("rolloutState"),
                     "task_definition": deployment.get("taskDefinition"),
+                    "desired_count": deployment.get("desiredCount"),
+                    "running_count": deployment.get("runningCount"),
+                    "pending_count": deployment.get("pendingCount"),
                     "reason": deployment.get("rolloutStateReason"),
                     "failed_tasks": deployment.get("failedTasks"),
                 }

@@ -42,12 +42,14 @@ class WorkflowContractTest(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertNotIn("pull_request_target", path.read_text())
 
-    def test_deployment_requires_build_result_and_runs_sequentially(self) -> None:
+    def test_deployment_requires_build_result_and_runs_independently(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+        deployment = workflow.split("\n  deploy:\n", 1)[1]
 
         self.assertIn("needs: [plan, release_please, required_builds]", workflow)
         self.assertIn("needs.required_builds.result == 'success'", workflow)
-        self.assertIn("max-parallel: 1", workflow)
+        self.assertIn("strategy:\n      fail-fast: false\n      matrix:", deployment)
+        self.assertNotIn("max-parallel: 1", deployment)
         self.assertIn(
             "pipeline_id:\n        description: Optional concurrency namespace",
             workflow,
