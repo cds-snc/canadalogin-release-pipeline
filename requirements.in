@@ -1,0 +1,5 @@
+# Runtime dependency declared in pyproject.toml.
+PyYAML>=6.0,<7
+
+# Required to build the local package without resolving build dependencies at runtime.
+setuptools>=77

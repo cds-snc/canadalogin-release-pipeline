@@ -11,7 +11,15 @@ install the package from the repository root:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e .
+python -m pip install --require-hashes --no-deps -r requirements.lock
+python -m pip install --no-build-isolation --no-deps -e .
+```
+
+`requirements.lock` pins the runtime and build dependencies used by CI and
+release workflows. Regenerate it after modifying `requirements.in`:
+
+```sh
+uv pip compile --generate-hashes --output-file requirements.lock requirements.in
 ```
 
 ## Unit tests
