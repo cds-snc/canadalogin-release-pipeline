@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .build import execute_build
-from .commands import CommandError
+from .commands import CommandError, log
 from .config import ConfigError, PipelineConfig
 from .deploy import (
     deploy_ecs,
@@ -126,13 +126,11 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 pipeline_failure_webhook_values(os.environ),
                 detail=options.detail,
             )
-            print(
-                json.dumps({"delivered": result.delivered, "skipped": result.skipped})
-            )
+            log(json.dumps({"delivered": result.delivered, "skipped": result.skipped}))
             return 0
         config = PipelineConfig.load(options.config)
         if options.command == "validate":
-            print(f"Configuration is valid for {config.application}.")
+            log(f"Configuration is valid for {config.application}.")
             return 0
         if options.command == "plan":
             force_redeploy = options.force_redeploy or _environment_bool(
@@ -141,7 +139,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             rebuild = options.rebuild or _environment_bool("RELEASE_REBUILD")
             validation = validate_repository(config, options.repository)
             for warning in validation.warnings:
-                print(f"::warning::{warning}")
+                log(f"::warning::{warning}")
             plan = create_plan(
                 config,
                 event_name=options.event_name,
@@ -156,7 +154,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             outputs = plan.github_outputs()
             if options.github_output:
                 _write_github_outputs(outputs)
-            print(json.dumps(outputs, indent=2, sort_keys=True))
+            log(json.dumps(outputs, indent=2, sort_keys=True))
             return 0
         if options.command == "build":
             release_tag = release_tag_for_sha(config, options.sha, options.repository)
@@ -177,7 +175,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             outputs = result.github_outputs()
             if options.github_output:
                 _write_github_outputs(outputs)
-            print(json.dumps(outputs, indent=2, sort_keys=True))
+            log(json.dumps(outputs, indent=2, sort_keys=True))
             return 0
         if options.command in {
             "preflight-s3",
@@ -217,7 +215,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
             outputs = result.github_outputs()
             if options.github_output:
                 _write_github_outputs(outputs)
-            print(json.dumps(outputs, indent=2, sort_keys=True))
+            log(json.dumps(outputs, indent=2, sort_keys=True))
             return 0
         if options.command == "notify":
             context = RuntimeContext.create(
@@ -235,9 +233,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 workflow_url=options.workflow_url,
                 detail=options.detail,
             )
-            print(
-                json.dumps({"delivered": result.delivered, "skipped": result.skipped})
-            )
+            log(json.dumps({"delivered": result.delivered, "skipped": result.skipped}))
             return 0
         if options.command == "pr-comment":
             promotions = promotions_from_json(
@@ -250,9 +246,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 token=os.environ.get("GITHUB_TOKEN", ""),
                 api_url=options.api_url,
             )
-            print(
-                json.dumps({"action": result.action, "comment_id": result.comment_id})
-            )
+            log(json.dumps({"action": result.action, "comment_id": result.comment_id}))
             return 0
     except (CommandError, ConfigError) as error:
         parser.exit(2, f"error: {error}\n")

@@ -14,6 +14,7 @@ from unittest.mock import patch
 from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.deploy import (
     _ecs_rollout_failed,
+    _ecs_service_diagnostics,
     _ecs_service_is_stable,
     deploy_ecs,
     deploy_s3,
@@ -760,6 +761,48 @@ class DeployTest(unittest.TestCase):
             )
         )
 
+    def test_ecs_diagnostics_identify_other_deployment(self) -> None:
+        document = {
+            "services": [
+                {
+                    "runningCount": 2,
+                    "desiredCount": 1,
+                    "pendingCount": 1,
+                    "deployments": [
+                        {
+                            "id": "deployment-new",
+                            "status": "PRIMARY",
+                            "taskDefinition": "task:new",
+                            "desiredCount": 1,
+                            "runningCount": 1,
+                            "pendingCount": 0,
+                            "rolloutState": "COMPLETED",
+                        },
+                        {
+                            "id": "deployment-old",
+                            "status": "ACTIVE",
+                            "taskDefinition": "task:old",
+                            "desiredCount": 1,
+                            "runningCount": 1,
+                            "pendingCount": 1,
+                            "rolloutState": "IN_PROGRESS",
+                        },
+                    ],
+                }
+            ],
+            "failures": [],
+        }
+
+        diagnostics = _ecs_service_diagnostics(
+            document,
+            expected_task_definition_arn="task:new",
+        )
+
+        self.assertIn("expected deployment is ready", diagnostics)
+        self.assertIn("waiting on other deployment(s)", diagnostics)
+        self.assertIn("id=deployment-old", diagnostics)
+        self.assertIn("task_definition=task:old", diagnostics)
+
     def test_ecs_wait_timeout_is_bounded_and_includes_last_diagnostics(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")
         image = json.dumps({"imageDetails": [{"imageTags": ["abc123"]}]})
@@ -794,6 +837,7 @@ class DeployTest(unittest.TestCase):
                         "pendingCount": 1,
                         "deployments": [
                             {
+                                "taskDefinition": "task:2",
                                 "status": "PRIMARY",
                                 "rolloutState": "IN_PROGRESS",
                                 "rolloutStateReason": "waiting for task",
@@ -825,8 +869,10 @@ class DeployTest(unittest.TestCase):
             },
         )
 
+        output = StringIO()
         with (
             patch("canadalogin_release.deploy.time.monotonic", side_effect=(0, 601)),
+            redirect_stdout(output),
             self.assertRaisesRegex(
                 ConfigError,
                 "within 600 seconds.*rollout_state.*IN_PROGRESS.*waiting for task",
@@ -834,6 +880,10 @@ class DeployTest(unittest.TestCase):
         ):
             deploy_ecs(config, context, runner=runner)
 
+        self.assertIn(
+            "expected deployment is still starting or reaching capacity",
+            output.getvalue(),
+        )
         self.assertFalse(
             any(command[1:3] == ("ssm", "put-parameter") for command in runner.commands)
         )

@@ -36,6 +36,10 @@ class CommandError(RuntimeError):
     """Raised when an external command fails."""
 
 
+def log(message: object) -> None:
+    print(message, flush=True)
+
+
 class CommandRunner:
     def run(
         self,
@@ -65,9 +69,9 @@ class CommandRunner:
             capture_output=True,
         )
         if log_output and result.stdout:
-            print(result.stdout, end="")
+            print(result.stdout, end="", flush=True)
         if log_output and result.stderr:
-            print(result.stderr, end="", file=os.sys.stderr)
+            print(result.stderr, end="", file=os.sys.stderr, flush=True)
         if check and result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip()
             detail_suffix = f": {detail}" if detail else ""

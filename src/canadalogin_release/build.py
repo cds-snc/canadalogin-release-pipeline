@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from .commands import GITHUB_CREDENTIALS, WORKFLOW_CREDENTIALS, CommandRunner
+from .commands import GITHUB_CREDENTIALS, WORKFLOW_CREDENTIALS, CommandRunner, log
 from .config import BUILD_WORKFLOW_SECRETS, BuildConfig, ConfigError, PipelineConfig
 from .git import run_git
 from .runtime import RuntimeContext, render, render_s3_prefix, resolve_reference
@@ -115,12 +115,12 @@ def _execute_command_build(
             unset_environment=(*BUILD_WORKFLOW_SECRETS, *GITHUB_CREDENTIALS),
         )
         if listing.returncode == 0 and listing.stdout.strip():
-            print(f"Artifact already exists at {destination}; skipping upload.")
+            log(f"Artifact already exists at {destination}; skipping upload.")
             return ""
         source = context.repository / artifact.source
         if not source.is_dir():
             raise ConfigError(f"Build artifact directory does not exist: {source}")
-        print(f"Uploading build artifact from {source} to {destination}.")
+        log(f"Uploading build artifact from {source} to {destination}.")
         command = ["aws", "s3", "sync", str(source), destination]
         command.append("--only-show-errors")
         if artifact.delete:
@@ -161,7 +161,7 @@ def _execute_docker_build(
                 exclusion_patterns,
                 runner,
             )
-            print(
+            log(
                 f"ECR image {repository}:{context.sha} already exists; "
                 "reusing the immutable image."
             )

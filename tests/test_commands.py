@@ -4,11 +4,24 @@ import io
 import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from unittest.mock import patch
 
-from canadalogin_release.commands import CommandError, CommandRunner
+from canadalogin_release.commands import CommandError, CommandRunner, log
 
 
 class CommandRunnerTest(unittest.TestCase):
+    @patch("builtins.print")
+    def test_log_flushes_status_messages(self, print_mock) -> None:
+        log("rollout still running")
+
+        print_mock.assert_called_once_with("rollout still running", flush=True)
+
+    @patch("builtins.print")
+    def test_command_output_flushes_status_messages(self, print_mock) -> None:
+        CommandRunner().run([sys.executable, "-c", "print('command output')"])
+
+        print_mock.assert_called_once_with("command output\n", end="", flush=True)
+
     def test_failed_command_includes_stderr_in_error(self) -> None:
         with self.assertRaisesRegex(CommandError, "command failed"):
             CommandRunner().run(

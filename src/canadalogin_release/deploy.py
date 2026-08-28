@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .commands import CommandRunner
+from .commands import CommandRunner, log
 from .config import (
     DEPLOYMENT_WORKFLOW_SECRETS,
     ConfigError,
@@ -117,7 +117,7 @@ def deploy_s3(
     for operation in operations:
         for target in operation.targets:
             destination = f"s3://{target.bucket}"
-            print(f"S3: syncing {operation.artifact_uri} to {destination}.")
+            log(f"S3: syncing {operation.artifact_uri} to {destination}.")
             command = [
                 "aws",
                 "s3",
@@ -132,10 +132,7 @@ def deploy_s3(
             changed.append(destination)
         for invalidation in operation.invalidations:
             paths = ", ".join(invalidation.paths)
-            print(
-                f"CloudFront: invalidating {invalidation.distribution}"
-                f" ({paths})."
-            )
+            log(f"CloudFront: invalidating {invalidation.distribution} ({paths}).")
             _run_aws(
                 runner,
                 [
@@ -165,7 +162,7 @@ def preflight_s3(
     invalidation_count = sum(
         len(operation.invalidations) for operation in operations
     )
-    print(
+    log(
         "S3 preflight complete: verified "
         f"{len(operations)} deployment(s), {target_count} target(s), "
         f"and {invalidation_count} CloudFront distribution(s)."
@@ -190,7 +187,7 @@ def deploy_ecs(
         deployment_image = _desired_image_reference(state)
         image_matches_desired = _image_matches_desired(state)
         if image_matches_desired and not force_redeploy:
-            print(
+            log(
                 f"{resource}: already runs {state.desired_image}; "
                 "checking service stability."
             )
@@ -200,7 +197,7 @@ def deploy_ecs(
                 expected_task_definition_arn=state.task_definition_arn,
             )
             _update_ssm(state, runner)
-            print(f"{resource}: no deployment needed.")
+            log(f"{resource}: no deployment needed.")
             unchanged.append(resource)
             continue
 
@@ -212,10 +209,10 @@ def deploy_ecs(
                 "deployment identity for a forced redeploy"
             )
         if not image_matches_desired:
-            print(f"{resource}: registering task definition for {deployment_image}.")
+            log(f"{resource}: registering task definition for {deployment_image}.")
             task_definition_arn = _register_task_definition(state, runner)
 
-        print(f"{resource}: updating service to {deployment_image}.")
+        log(f"{resource}: updating service to {deployment_image}.")
         update_command = [
             "aws",
             "ecs",
@@ -242,7 +239,7 @@ def deploy_ecs(
         if not image_matches_desired:
             _verify_task_definition_image(state, task_definition_arn, runner)
         _update_ssm(state, runner)
-        print(f"{resource}: deployment complete.")
+        log(f"{resource}: deployment complete.")
         changed.append(resource)
     return DeploymentResult(context.sha, tuple(changed), tuple(unchanged))
 
@@ -281,7 +278,11 @@ def _wait_for_service_stability(
                 document = None
                 diagnostics = "describe-services returned invalid JSON"
             if isinstance(document, Mapping):
-                diagnostics = _ecs_service_diagnostics(document)
+                diagnostics = _ecs_service_diagnostics(
+                    document,
+                    expected_task_definition_arn=expected_task_definition_arn,
+                    previous_deployment_id=previous_deployment_id,
+                )
                 if _ecs_rollout_failed(
                     document,
                     expected_task_definition_arn=expected_task_definition_arn,
@@ -296,12 +297,12 @@ def _wait_for_service_stability(
                     expected_task_definition_arn=expected_task_definition_arn,
                     previous_deployment_id=previous_deployment_id,
                 ):
-                    print(f"{resource}: rollout complete.")
+                    log(f"{resource}: rollout complete.")
                     return
             elif document is not None:
                 diagnostics = "describe-services returned a non-object"
         if diagnostics != last_reported_diagnostics:
-            print(f"{resource}: waiting for rollout ({diagnostics}).")
+            log(f"{resource}: waiting for rollout ({diagnostics}).")
             last_reported_diagnostics = diagnostics
 
         remaining = deadline - time.monotonic()
@@ -333,14 +334,10 @@ def _ecs_service_is_stable(
         deployment
         for deployment in deployments
         if isinstance(deployment, Mapping)
-        and deployment.get("status") == "PRIMARY"
-        and (
-            expected_task_definition_arn is None
-            or deployment.get("taskDefinition") == expected_task_definition_arn
-        )
-        and (
-            previous_deployment_id is None
-            or deployment.get("id") != previous_deployment_id
+        and _ecs_deployment_matches_expected(
+            deployment,
+            expected_task_definition_arn=expected_task_definition_arn,
+            previous_deployment_id=previous_deployment_id,
         )
     ]
     if len(matching_deployments) != 1:
@@ -349,9 +346,34 @@ def _ecs_service_is_stable(
     deployment = matching_deployments[0]
     desired_count = service.get("desiredCount")
     return (
+        _ecs_deployment_is_ready(deployment, desired_count)
+        and service.get("pendingCount", 0) == 0
+    )
+
+
+def _ecs_deployment_matches_expected(
+    deployment: Mapping[str, Any],
+    *,
+    expected_task_definition_arn: str | None,
+    previous_deployment_id: str | None,
+) -> bool:
+    return (
+        deployment.get("status") == "PRIMARY"
+        and (
+            expected_task_definition_arn is None
+            or deployment.get("taskDefinition") == expected_task_definition_arn
+        )
+        and (
+            previous_deployment_id is None
+            or deployment.get("id") != previous_deployment_id
+        )
+    )
+
+
+def _ecs_deployment_is_ready(deployment: Mapping[str, Any], desired_count: Any) -> bool:
+    return (
         deployment.get("desiredCount") == desired_count
         and deployment.get("runningCount") == desired_count
-        and service.get("pendingCount", 0) == 0
         and deployment.get("pendingCount", 0) == 0
         and deployment.get("rolloutState", "COMPLETED") == "COMPLETED"
     )
@@ -387,7 +409,12 @@ def _ecs_rollout_failed(
     )
 
 
-def _ecs_service_diagnostics(document: Mapping[str, Any]) -> str:
+def _ecs_service_diagnostics(
+    document: Mapping[str, Any],
+    *,
+    expected_task_definition_arn: str | None = None,
+    previous_deployment_id: str | None = None,
+) -> str:
     services = document.get("services", [])
     if not isinstance(services, list) or len(services) != 1:
         return f"diagnostics_unavailable=unexpected services response: {services!r}"
@@ -397,24 +424,67 @@ def _ecs_service_diagnostics(document: Mapping[str, Any]) -> str:
 
     deployments = service.get("deployments", [])
     rollout_states = []
+    deployment_entries = []
     if isinstance(deployments, list):
-        for deployment in deployments:
+        for index, deployment in enumerate(deployments):
             if not isinstance(deployment, Mapping):
                 continue
-            state = (
-                f"id={deployment.get('id')} "
-                f"status={deployment.get('status')} "
-                f"rollout_state={deployment.get('rolloutState')} "
-                f"task_definition={deployment.get('taskDefinition')} "
-                f"desired={deployment.get('desiredCount')} "
-                f"running={deployment.get('runningCount')} "
-                f"pending={deployment.get('pendingCount')} "
-                f"failed_tasks={deployment.get('failedTasks')}"
+            deployment_entries.append((index, deployment))
+            rollout_states.append(_ecs_deployment_summary(deployment))
+
+    expected_indices = {
+        index
+        for index, deployment in deployment_entries
+        if _ecs_deployment_matches_expected(
+            deployment,
+            expected_task_definition_arn=expected_task_definition_arn,
+            previous_deployment_id=previous_deployment_id,
+        )
+    }
+    expected_deployments = [
+        deployment
+        for index, deployment in deployment_entries
+        if index in expected_indices
+    ]
+    other_deployments = [
+        deployment
+        for index, deployment in deployment_entries
+        if index not in expected_indices
+    ]
+    if len(expected_deployments) == 1:
+        expected_deployment = expected_deployments[0]
+        expected_summary = _ecs_deployment_summary(expected_deployment)
+        if _ecs_deployment_is_ready(expected_deployment, service.get("desiredCount")):
+            if other_deployments:
+                rollout_status = (
+                    f"expected deployment is ready ({expected_summary}); "
+                    "waiting on other deployment(s): "
+                    + ", ".join(
+                        _ecs_deployment_summary(deployment)
+                        for deployment in other_deployments
+                    )
+                )
+            else:
+                rollout_status = (
+                    f"expected deployment is ready ({expected_summary}); "
+                    "waiting for ECS service stability"
+                )
+        else:
+            rollout_status = (
+                "expected deployment is still starting or reaching capacity: "
+                + expected_summary
             )
-            reason = deployment.get("rolloutStateReason")
-            if reason:
-                state += f" reason={reason}"
-            rollout_states.append(state)
+    elif expected_deployments:
+        rollout_status = "expected deployment identity is ambiguous: " + ", ".join(
+            _ecs_deployment_summary(deployment) for deployment in expected_deployments
+        )
+    elif expected_task_definition_arn is not None:
+        rollout_status = (
+            "expected deployment not found: "
+            f"task_definition={expected_task_definition_arn}"
+        )
+    else:
+        rollout_status = "expected deployment not found"
     events = service.get("events", [])
     recent_events = []
     if isinstance(events, list):
@@ -422,11 +492,28 @@ def _ecs_service_diagnostics(document: Mapping[str, Any]) -> str:
             if isinstance(event, Mapping) and event.get("message"):
                 recent_events.append(" ".join(str(event["message"]).split()))
     return (
-        f"rollout_states=[{'; '.join(rollout_states)}]; "
+        f"{rollout_status}; rollout_states=[{'; '.join(rollout_states)}]; "
         f"counts=running:{service.get('runningCount')}, "
         f"desired:{service.get('desiredCount')}, pending:{service.get('pendingCount')}; "
         f"recent_events=[{' | '.join(recent_events)}]"
     )
+
+
+def _ecs_deployment_summary(deployment: Mapping[str, Any]) -> str:
+    state = (
+        f"id={deployment.get('id')} "
+        f"status={deployment.get('status')} "
+        f"rollout_state={deployment.get('rolloutState')} "
+        f"task_definition={deployment.get('taskDefinition')} "
+        f"desired={deployment.get('desiredCount')} "
+        f"running={deployment.get('runningCount')} "
+        f"pending={deployment.get('pendingCount')} "
+        f"failed_tasks={deployment.get('failedTasks')}"
+    )
+    reason = deployment.get("rolloutStateReason")
+    if reason:
+        state += f" reason={reason}"
+    return state
 
 
 def preflight_ecs(
@@ -438,7 +525,7 @@ def preflight_ecs(
     runner = runner or CommandRunner()
     context = target_context(config, context)
     states = _prepare_ecs(config, context, runner)
-    print(f"ECS preflight complete: verified {len(states)} service(s).")
+    log(f"ECS preflight complete: verified {len(states)} service(s).")
     return DeploymentResult(context.sha, (), ())
 
 
@@ -776,7 +863,7 @@ def _update_ssm(state: _EcsState, runner: CommandRunner) -> None:
     if not state.ssm_parameter:
         return
     resource = f"ecs:{state.cluster}/{state.service}"
-    print(f"{resource}: updating SSM parameter {state.ssm_parameter}.")
+    log(f"{resource}: updating SSM parameter {state.ssm_parameter}.")
     _run_aws(
         runner,
         [
