@@ -1,4 +1,4 @@
-name: Release gate
+name: PR mergeability
 
 on:
   pull_request:
