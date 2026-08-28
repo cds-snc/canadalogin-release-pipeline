@@ -106,6 +106,9 @@ class DeployTest(unittest.TestCase):
                                 "id": deployment_id,
                                 "status": "PRIMARY",
                                 "taskDefinition": task_definition,
+                                "desiredCount": 1,
+                                "runningCount": 1,
+                                "pendingCount": 0,
                                 "rolloutState": "COMPLETED",
                             }
                         ],
@@ -698,6 +701,31 @@ class DeployTest(unittest.TestCase):
                 json.loads(self.stable_service("task:new", "deployment-old")),
                 expected_task_definition_arn="task:new",
                 previous_deployment_id="deployment-old",
+            )
+        )
+
+    def test_ecs_stability_accepts_completed_primary_while_previous_drains(
+        self,
+    ) -> None:
+        document = json.loads(self.stable_service("task:new", "deployment-new"))
+        service = document["services"][0]
+        service["runningCount"] = 2
+        service["deployments"].append(
+            {
+                "id": "deployment-old",
+                "status": "ACTIVE",
+                "taskDefinition": "task:old",
+                "desiredCount": 1,
+                "runningCount": 1,
+                "pendingCount": 0,
+                "rolloutState": "COMPLETED",
+            }
+        )
+
+        self.assertTrue(
+            _ecs_service_is_stable(
+                document,
+                expected_task_definition_arn="task:new",
             )
         )
 
