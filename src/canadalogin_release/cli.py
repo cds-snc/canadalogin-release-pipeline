@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .build import execute_build
+from .commands import CommandError
 from .config import ConfigError, PipelineConfig
 from .deploy import (
     deploy_ecs,
@@ -253,7 +254,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
                 json.dumps({"action": result.action, "comment_id": result.comment_id})
             )
             return 0
-    except ConfigError as error:
+    except (CommandError, ConfigError) as error:
         parser.exit(2, f"error: {error}\n")
     return 1
 

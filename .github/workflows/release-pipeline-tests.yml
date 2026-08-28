@@ -139,13 +139,13 @@ jobs:
           TF_STATE_BUCKET: cl-acceptance-tfstate-${{ env.AWS_ACCOUNT_ID }}
           TF_STATE_LOCK_TABLE: cl-acceptance-tfstate-lock-${{ env.AWS_ACCOUNT_ID }}
         run: |
-          terraform -chdir=acceptance/terraform fmt -check -recursive
-          terraform -chdir=acceptance/terraform init -input=false -reconfigure \
+          terraform -chdir=acceptance/terraform fmt -check -no-color -recursive
+          terraform -chdir=acceptance/terraform init -input=false -no-color -reconfigure \
             -backend-config="bucket=$TF_STATE_BUCKET" \
             -backend-config="key=release-pipeline-acceptance/terraform.tfstate" \
             -backend-config="region=$AWS_REGION" \
             -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE"
-          terraform -chdir=acceptance/terraform validate
+          terraform -chdir=acceptance/terraform validate -no-color
 
       - name: Apply acceptance Terraform
         env:
@@ -153,7 +153,7 @@ jobs:
           TF_VAR_aws_account_id: ${{ env.AWS_ACCOUNT_ID }}
           TF_VAR_aws_region: ${{ env.AWS_REGION }}
           TF_VAR_github_oidc_subject_prefix: repo:${{ github.repository_owner }}@${{ github.repository_owner_id }}/${{ github.event.repository.name }}@${{ github.repository_id }}
-        run: terraform -chdir=acceptance/terraform apply -input=false -auto-approve
+        run: terraform -chdir=acceptance/terraform apply -input=false -auto-approve -no-color
 
   acceptance:
     name: Acceptance test (${{ matrix.id }})
@@ -230,7 +230,7 @@ jobs:
               -f state="$state" \
               -f context="$context" \
               -f description="$description" \
-              -f target_url="$RUN_URL"
+              -f target_url="$RUN_URL" >/dev/null
           done
 
       - name: Comment on the release pull request
@@ -241,6 +241,6 @@ jobs:
           RESULT: ${{ needs.validate_request.result == 'success' && needs.assert_suite.result == 'success' && 'passed' || 'failed' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if ! gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Integration and acceptance tests $RESULT. $RUN_URL"; then
+          if ! gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Integration and acceptance tests $RESULT. $RUN_URL" >/dev/null; then
             printf '%s\n' 'Integration status was published, but the PR comment could not be posted.' >&2
           fi

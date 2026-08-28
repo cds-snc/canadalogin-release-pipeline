@@ -69,7 +69,7 @@ jobs:
             -f state=pending \
             -f context='Integration / acceptance tests' \
             -f description='Integration and acceptance tests are running.' \
-            -f target_url="$workflow_url"; then
+            -f target_url="$workflow_url" >/dev/null; then
             printf '%s\n' 'Could not publish the pending acceptance status.' >&2
             exit 1
           fi
@@ -82,17 +82,17 @@ jobs:
           if ! gh api --method POST \
             "repos/$REPOSITORY/actions/workflows/release-pipeline-tests.yml/dispatches" \
             -H 'Content-Type: application/json' \
-            --input - <<<"$payload"; then
+            --input - <<<"$payload" >/dev/null; then
             gh api --method POST "repos/$REPOSITORY/statuses/$head_sha" \
               -f state=failure \
               -f context='Integration / acceptance tests' \
               -f description='Integration and acceptance test dispatch failed.' \
-              -f target_url="$workflow_url" || true
+              -f target_url="$workflow_url" >/dev/null || true
             exit 1
           fi
 
           if ! gh api --method POST \
             "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
-            -f "body=Integration and acceptance tests dispatched for $head_sha. $workflow_url"; then
+            -f "body=Integration and acceptance tests dispatched for $head_sha. $workflow_url" >/dev/null; then
             printf '%s\n' 'Integration tests were dispatched, but the PR comment could not be posted.' >&2
           fi
