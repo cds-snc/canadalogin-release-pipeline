@@ -5,6 +5,7 @@ import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
+from .commands import log
 from .config import (
     DEFAULT_ALERT_NOTIFICATION_SECRET,
     DEFAULT_ALERT_NOTIFICATION_SECRET_SLOTS,
@@ -84,7 +85,7 @@ def notify(
     else:
         webhooks = default_alert_webhook_values(context.secrets)
     if not webhooks:
-        print(f"No {channel} Slack webhook is configured; skipping notification.")
+        log(f"No {channel} Slack webhook is configured; skipping notification.")
         return NotificationResult(delivered=0, skipped=True)
 
     suffix = f" ({detail})" if detail else ""
@@ -109,7 +110,7 @@ def notify_pipeline_failure(
 ) -> NotificationResult:
     unique_webhooks = tuple(dict.fromkeys(webhook for webhook in webhooks if webhook))
     if not unique_webhooks:
-        print("No Slack alert webhook is configured; skipping pipeline notification.")
+        log("No Slack alert webhook is configured; skipping pipeline notification.")
         return NotificationResult(delivered=0, skipped=True)
     text = (
         f":x: {application} release pipeline failed during {detail}.\n\n"
