@@ -111,6 +111,7 @@ def _execute_command_build(
         listing = runner.run(
             ["aws", "s3", "ls", f"{destination}/"],
             check=False,
+            log_output=False,
             unset_environment=(*BUILD_WORKFLOW_SECRETS, *GITHUB_CREDENTIALS),
         )
         if listing.returncode == 0 and listing.stdout.strip():
@@ -119,7 +120,9 @@ def _execute_command_build(
         source = context.repository / artifact.source
         if not source.is_dir():
             raise ConfigError(f"Build artifact directory does not exist: {source}")
+        print(f"Uploading build artifact from {source} to {destination}.")
         command = ["aws", "s3", "sync", str(source), destination]
+        command.append("--only-show-errors")
         if artifact.delete:
             command.append("--delete")
         runner.run(

@@ -69,8 +69,11 @@ class CommandRunner:
         if log_output and result.stderr:
             print(result.stderr, end="", file=os.sys.stderr)
         if check and result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip()
+            detail_suffix = f": {detail}" if detail else ""
             raise CommandError(
                 f"Command failed with exit code {result.returncode}: "
                 + " ".join(arguments)
+                + detail_suffix
             )
         return result

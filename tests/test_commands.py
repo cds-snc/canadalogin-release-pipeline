@@ -5,10 +5,17 @@ import sys
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
-from canadalogin_release.commands import CommandRunner
+from canadalogin_release.commands import CommandError, CommandRunner
 
 
 class CommandRunnerTest(unittest.TestCase):
+    def test_failed_command_includes_stderr_in_error(self) -> None:
+        with self.assertRaisesRegex(CommandError, "command failed"):
+            CommandRunner().run(
+                [sys.executable, "-c", "import sys; print('command failed', file=sys.stderr); sys.exit(1)"],
+                log_output=False,
+            )
+
     def test_suppressed_output_is_returned_but_not_logged(self) -> None:
         output = io.StringIO()
         error = io.StringIO()

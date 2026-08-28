@@ -20,6 +20,7 @@ class RecordingRunner:
     def __init__(self, responses: Sequence[tuple[int, str]] = ()) -> None:
         self.commands: list[tuple[tuple[str, ...], Path, Mapping[str, str]]] = []
         self.unset_environments: list[tuple[str, ...]] = []
+        self.log_outputs: list[bool] = []
         self.responses = list(responses)
 
     def run(
@@ -34,6 +35,7 @@ class RecordingRunner:
     ) -> subprocess.CompletedProcess[str]:
         self.commands.append((tuple(arguments), Path(cwd), environment or {}))
         self.unset_environments.append(tuple(unset_environment))
+        self.log_outputs.append(log_output)
         return_code, stdout = self.responses.pop(0) if self.responses else (0, "")
         return subprocess.CompletedProcess(arguments, return_code, stdout, "")
 
@@ -96,8 +98,10 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(command_environment["VITE_RELEASE_TAG"], "v1.2.3")
         self.assertNotIn("BUILD_SECRET_1", runner.unset_environments[0])
         self.assertNotIn("--delete", runner.commands[-1][0])
+        self.assertIn("--only-show-errors", runner.commands[-1][0])
         self.assertIn("AWS_ACCESS_KEY_ID", runner.unset_environments[0])
         self.assertIn("GITHUB_TOKEN", runner.unset_environments[0])
+        self.assertFalse(runner.log_outputs[-2])
 
     def test_docker_build_applies_sha_latest_release_and_build_args(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")

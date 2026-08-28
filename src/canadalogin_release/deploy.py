@@ -116,18 +116,26 @@ def deploy_s3(
     changed: list[str] = []
     for operation in operations:
         for target in operation.targets:
+            destination = f"s3://{target.bucket}"
+            print(f"S3: syncing {operation.artifact_uri} to {destination}.")
             command = [
                 "aws",
                 "s3",
                 "sync",
                 operation.artifact_uri,
-                f"s3://{target.bucket}",
+                destination,
             ]
+            command.append("--only-show-errors")
             if target.delete:
                 command.append("--delete")
             _run_aws(runner, command)
-            changed.append(f"s3://{target.bucket}")
+            changed.append(destination)
         for invalidation in operation.invalidations:
+            paths = ", ".join(invalidation.paths)
+            print(
+                f"CloudFront: invalidating {invalidation.distribution}"
+                f" ({paths})."
+            )
             _run_aws(
                 runner,
                 [
@@ -152,7 +160,16 @@ def preflight_s3(
 ) -> DeploymentResult:
     runner = runner or CommandRunner()
     context = target_context(config, context)
-    _prepare_s3(config, context, runner)
+    operations = _prepare_s3(config, context, runner)
+    target_count = sum(len(operation.targets) for operation in operations)
+    invalidation_count = sum(
+        len(operation.invalidations) for operation in operations
+    )
+    print(
+        "S3 preflight complete: verified "
+        f"{len(operations)} deployment(s), {target_count} target(s), "
+        f"and {invalidation_count} CloudFront distribution(s)."
+    )
     return DeploymentResult(context.sha, (), ())
 
 
@@ -170,10 +187,12 @@ def deploy_ecs(
     unchanged: list[str] = []
     for state in states:
         resource = f"ecs:{state.cluster}/{state.service}"
+        deployment_image = _desired_image_reference(state)
         image_matches_desired = _image_matches_desired(state)
         if image_matches_desired and not force_redeploy:
             print(
-                f"{resource} already runs {state.desired_image}; skipping deployment."
+                f"{resource}: already runs {state.desired_image}; "
+                "checking service stability."
             )
             _wait_for_service_stability(
                 state,
@@ -181,6 +200,7 @@ def deploy_ecs(
                 expected_task_definition_arn=state.task_definition_arn,
             )
             _update_ssm(state, runner)
+            print(f"{resource}: no deployment needed.")
             unchanged.append(resource)
             continue
 
@@ -192,8 +212,10 @@ def deploy_ecs(
                 "deployment identity for a forced redeploy"
             )
         if not image_matches_desired:
+            print(f"{resource}: registering task definition for {deployment_image}.")
             task_definition_arn = _register_task_definition(state, runner)
 
+        print(f"{resource}: updating service to {deployment_image}.")
         update_command = [
             "aws",
             "ecs",
@@ -220,6 +242,7 @@ def deploy_ecs(
         if not image_matches_desired:
             _verify_task_definition_image(state, task_definition_arn, runner)
         _update_ssm(state, runner)
+        print(f"{resource}: deployment complete.")
         changed.append(resource)
     return DeploymentResult(context.sha, tuple(changed), tuple(unchanged))
 
@@ -232,6 +255,7 @@ def _wait_for_service_stability(
     previous_deployment_id: str | None = None,
 ) -> None:
     deadline = time.monotonic() + ECS_ROLLOUT_TIMEOUT_SECONDS
+    resource = f"ecs:{state.cluster}/{state.service}"
     command = [
         "aws",
         "ecs",
@@ -244,6 +268,7 @@ def _wait_for_service_stability(
         "json",
     ]
     diagnostics = "no ECS service response"
+    last_reported_diagnostics = None
     while True:
         result = _run_aws(runner, command, check=False, log_output=False)
         if result.returncode != 0:
@@ -271,9 +296,13 @@ def _wait_for_service_stability(
                     expected_task_definition_arn=expected_task_definition_arn,
                     previous_deployment_id=previous_deployment_id,
                 ):
+                    print(f"{resource}: rollout complete.")
                     return
             elif document is not None:
                 diagnostics = "describe-services returned a non-object"
+        if diagnostics != last_reported_diagnostics:
+            print(f"{resource}: waiting for rollout ({diagnostics}).")
+            last_reported_diagnostics = diagnostics
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -372,30 +401,31 @@ def _ecs_service_diagnostics(document: Mapping[str, Any]) -> str:
         for deployment in deployments:
             if not isinstance(deployment, Mapping):
                 continue
-            rollout_states.append(
-                {
-                    "id": deployment.get("id"),
-                    "status": deployment.get("status"),
-                    "rollout_state": deployment.get("rolloutState"),
-                    "task_definition": deployment.get("taskDefinition"),
-                    "desired_count": deployment.get("desiredCount"),
-                    "running_count": deployment.get("runningCount"),
-                    "pending_count": deployment.get("pendingCount"),
-                    "reason": deployment.get("rolloutStateReason"),
-                    "failed_tasks": deployment.get("failedTasks"),
-                }
+            state = (
+                f"id={deployment.get('id')} "
+                f"status={deployment.get('status')} "
+                f"rollout_state={deployment.get('rolloutState')} "
+                f"task_definition={deployment.get('taskDefinition')} "
+                f"desired={deployment.get('desiredCount')} "
+                f"running={deployment.get('runningCount')} "
+                f"pending={deployment.get('pendingCount')} "
+                f"failed_tasks={deployment.get('failedTasks')}"
             )
+            reason = deployment.get("rolloutStateReason")
+            if reason:
+                state += f" reason={reason}"
+            rollout_states.append(state)
     events = service.get("events", [])
     recent_events = []
     if isinstance(events, list):
         for event in events[:5]:
             if isinstance(event, Mapping) and event.get("message"):
-                recent_events.append(event["message"])
+                recent_events.append(" ".join(str(event["message"]).split()))
     return (
-        f"rollout_states={rollout_states!r}; "
-        f"counts={{running:{service.get('runningCount')}, "
-        f"desired:{service.get('desiredCount')}, pending:{service.get('pendingCount')}}}; "
-        f"recent_events={recent_events!r}"
+        f"rollout_states=[{'; '.join(rollout_states)}]; "
+        f"counts=running:{service.get('runningCount')}, "
+        f"desired:{service.get('desiredCount')}, pending:{service.get('pendingCount')}; "
+        f"recent_events=[{' | '.join(recent_events)}]"
     )
 
 
@@ -407,7 +437,8 @@ def preflight_ecs(
 ) -> DeploymentResult:
     runner = runner or CommandRunner()
     context = target_context(config, context)
-    _prepare_ecs(config, context, runner)
+    states = _prepare_ecs(config, context, runner)
+    print(f"ECS preflight complete: verified {len(states)} service(s).")
     return DeploymentResult(context.sha, (), ())
 
 
@@ -744,6 +775,8 @@ def _image_matches_desired(state: _EcsState) -> bool:
 def _update_ssm(state: _EcsState, runner: CommandRunner) -> None:
     if not state.ssm_parameter:
         return
+    resource = f"ecs:{state.cluster}/{state.service}"
+    print(f"{resource}: updating SSM parameter {state.ssm_parameter}.")
     _run_aws(
         runner,
         [
@@ -779,7 +812,7 @@ def _run_aws(
     arguments: Sequence[str],
     *,
     check: bool = True,
-    log_output: bool = True,
+    log_output: bool = False,
 ):
     return runner.run(
         arguments,

@@ -5,7 +5,9 @@ import subprocess
 import tempfile
 import unittest
 from collections.abc import Mapping, Sequence
+from contextlib import redirect_stdout
 from dataclasses import replace
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -35,6 +37,7 @@ class AwsRunner:
     def __init__(self, responses: Sequence[tuple[int, str]] = ()) -> None:
         self.commands: list[tuple[str, ...]] = []
         self.unset_environments: list[tuple[str, ...]] = []
+        self.log_outputs: list[bool] = []
         self.responses = list(responses)
         self.registration: dict[str, object] | None = None
 
@@ -51,6 +54,7 @@ class AwsRunner:
         command = tuple(arguments)
         self.commands.append(command)
         self.unset_environments.append(tuple(unset_environment))
+        self.log_outputs.append(log_output)
         if "register-task-definition" in command:
             input_path = next(
                 argument.removeprefix("file://")
@@ -146,7 +150,15 @@ class DeployTest(unittest.TestCase):
         self.assertNotIn("DEPLOY_SECRET_1", runner.unset_environments[0])
         self.assertEqual(
             runner.commands[5],
-            ("aws", "s3", "sync", "s3://builds/abc123", "s3://english", "--delete"),
+            (
+                "aws",
+                "s3",
+                "sync",
+                "s3://builds/abc123",
+                "s3://english",
+                "--only-show-errors",
+                "--delete",
+            ),
         )
         self.assertEqual(runner.commands[1][0:3], ("aws", "s3api", "head-bucket"))
         self.assertEqual(runner.commands[2][0:3], ("aws", "s3api", "head-bucket"))
@@ -453,7 +465,9 @@ class DeployTest(unittest.TestCase):
             },
         )
 
-        result = deploy_ecs(config, context, runner=runner)
+        output = StringIO()
+        with redirect_stdout(output):
+            result = deploy_ecs(config, context, runner=runner)
 
         self.assertNotIn("revision", runner.registration)
         containers = runner.registration["containerDefinitions"]
@@ -469,6 +483,12 @@ class DeployTest(unittest.TestCase):
         )
         self.assertEqual(runner.commands[7][0:3], ("aws", "ssm", "put-parameter"))
         self.assertEqual(result.changed_resources, ("ecs:cluster/service",))
+        self.assertTrue(runner.log_outputs)
+        self.assertTrue(all(not log_output for log_output in runner.log_outputs))
+        self.assertIn("registering task definition", output.getvalue())
+        self.assertIn("updating service", output.getvalue())
+        self.assertIn("deployment complete", output.getvalue())
+        self.assertNotIn('"taskDefinition"', output.getvalue())
 
     def test_ecs_deploy_updates_every_service_in_a_multi_service_backend(self) -> None:
         config = self.config_from_text(MULTI_SERVICE_CONFIG)
