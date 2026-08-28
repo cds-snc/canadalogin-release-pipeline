@@ -74,11 +74,9 @@ jobs:
       force_redeploy: ${{ steps.plan.outputs.force_redeploy }}
       has_promotions: ${{ steps.plan.outputs.has_promotions }}
       has_required_builds: ${{ steps.plan.outputs.has_required_builds }}
-      has_auxiliary_builds: ${{ steps.plan.outputs.has_auxiliary_builds }}
       has_deployments: ${{ steps.plan.outputs.has_deployments }}
       promotions: ${{ steps.plan.outputs.promotions }}
       required_build_matrix: ${{ steps.plan.outputs.required_build_matrix }}
-      auxiliary_build_matrix: ${{ steps.plan.outputs.auxiliary_build_matrix }}
       deployment_matrix: ${{ steps.plan.outputs.deployment_matrix }}
     steps:
       - name: Checkout caller repository
@@ -205,43 +203,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.required_build_matrix) }}
-    permissions:
-      contents: write
-      id-token: write
-    uses: $/.github/workflows/build.yml
-    with:
-      config-path: ${{ inputs.config-path }}
-      aws-account-id: ${{ inputs.aws-account-id }}
-      aws-region: ${{ inputs.aws-region || matrix.aws_region }}
-      github-environment: ${{ inputs.github-environment || matrix.environment }}
-      enabled: ${{ matrix.enabled }}
-      name: ${{ matrix.name }}
-      environment: ${{ matrix.environment }}
-      target-environment: ${{ matrix.target_environment }}
-      source-sha: ${{ matrix.sha }}
-      notify-failure: ${{ matrix.notify_failure }}
-      kind: ${{ matrix.kind }}
-      aws-role: ${{ matrix.aws_role }}
-      dns-audit: ${{ matrix.dns_audit }}
-      node-version: ${{ matrix.node_version }}
-      sbom-enabled: ${{ matrix.sbom_enabled }}
-      sbom-name: ${{ matrix.sbom_name }}
-      sbom-dockerfile: ${{ matrix.sbom_dockerfile }}
-      release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
-    secrets: inherit
-
-  auxiliary_builds:
-    name: ${{ matrix.name && format('Auxiliary build {0} ({1})', matrix.name, matrix.target_environment) || 'Auxiliary builds' }}
-    needs: [plan, release_please]
-    if: >-
-      ${{
-        always() &&
-        needs.plan.result == 'success' &&
-        (needs.release_please.result == 'success' || needs.release_please.result == 'skipped')
-      }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.plan.outputs.auxiliary_build_matrix) }}
     permissions:
       contents: write
       id-token: write

@@ -71,7 +71,7 @@ load_tests:
   dockerfile: load_tests/Dockerfile
 ```
 
-`enabled` defaults to the standard `load_tests/Dockerfile`. The build uses the staging desired SHA, publishes the SHA and `latest` image tags to `RELEASE_LOAD_TEST_ECR_REPOSITORY`, and is a non-gating staging auxiliary build. It does not update an application ECS service. The source Dockerfile must exist in the caller repository before enabling the capability.
+`enabled` defaults to the standard `load_tests/Dockerfile`. The required build uses the staging desired SHA and publishes the SHA and `latest` image tags to `RELEASE_LOAD_TEST_ECR_REPOSITORY`. It does not update an application ECS service. The source Dockerfile must exist in the caller repository before enabling the capability.
 
 ## Top-level fields
 
@@ -204,7 +204,7 @@ When a Docker repository is an AWS ECR repository and the build publishes `sha` 
 
 The backend image is built once with the development environment's contract and
 is reused by every deployment environment. An enabled `load_tests` block adds a
-non-gating staging image using `RELEASE_LOAD_TEST_ECR_REPOSITORY`; it does not
+required staging image using `RELEASE_LOAD_TEST_ECR_REPOSITORY`; it does not
 update an application ECS service. The selected source SHA controls checkout,
 tags, build arguments, S3 prefixes, and release metadata.
 

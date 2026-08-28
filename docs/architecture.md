@@ -79,12 +79,9 @@ sequenceDiagram
     else push or dispatch
         Plan->>ReleasePlease: run on push
         ReleasePlease->>Builds: release tag is now visible
-        par required builds
-            Builds->>AWS: publish S3 artifacts
-            Builds->>AWS: publish ECR images and SBOMs
-        and auxiliary builds
-            Builds->>AWS: publish load-test image
-        end
+        Builds->>AWS: publish S3 artifacts
+        Builds->>AWS: publish ECR images and SBOMs
+        Builds->>AWS: publish load-test image
         Builds->>Environment: start only after all required builds pass
         Environment->>AWS: preflight S3 artifacts, ECR images, and current ECS state
         Environment->>AWS: deploy S3/CloudFront, then ECS/SSM

@@ -63,7 +63,6 @@ flowchart TD
     B --> C[PR deployment impact comment]
     B --> D[release-please]
     D --> E[Required build matrix]
-    D --> F[Auxiliary build matrix]
     E --> G[Environment deployment matrix]
     G --> H[S3 and CloudFront]
     G --> I[ECS and SSM]

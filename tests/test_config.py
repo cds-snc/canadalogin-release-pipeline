@@ -102,7 +102,6 @@ class PipelineConfigTest(unittest.TestCase):
         self.assertEqual(backend.docker.context, Path("backend"))
         self.assertEqual(backend.docker.dockerfile, Path("backend/Dockerfile"))
         self.assertEqual(config.builds[2].source_environment, "staging")
-        self.assertFalse(config.builds[2].gates_deployment)
 
     def test_rejects_schema_one(self) -> None:
         with self.assertRaisesRegex(ConfigError, "schema_version must be 2"):

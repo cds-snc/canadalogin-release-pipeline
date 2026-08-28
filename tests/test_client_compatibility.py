@@ -95,15 +95,7 @@ class ClientCompatibilityTest(unittest.TestCase):
                 self.assertEqual(len(plan.deployments), len(config.environments.deploy))
                 self.assertEqual(
                     {entry["name"] for entry in plan.required_builds},
-                    {build.name for build in config.builds if build.gates_deployment},
-                )
-                self.assertEqual(
-                    {entry["name"] for entry in plan.auxiliary_builds},
-                    {
-                        build.name
-                        for build in config.builds
-                        if not build.gates_deployment
-                    },
+                    {build.name for build in config.builds},
                 )
 
 
