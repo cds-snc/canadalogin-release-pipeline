@@ -73,6 +73,8 @@ class PipelineConfigTest(unittest.TestCase):
         self.assertEqual(
             [build.name for build in config.builds], ["frontend", "backend"]
         )
+        self.assertEqual(config.builds[0].s3_artifact.prefix, "{environment}/{sha}")
+        self.assertEqual(config.deployments[0].artifact_prefix, "{environment}/{sha}")
         self.assertEqual(
             config.deployment_roles("prod"),
             {

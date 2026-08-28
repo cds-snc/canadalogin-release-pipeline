@@ -141,7 +141,7 @@ class ReleaseConfig:
 class S3ArtifactConfig:
     source: Path
     bucket: ValueReference
-    prefix: str = "{sha}"
+    prefix: str = "{environment}/{sha}"
     delete: bool = False
 
 
@@ -206,7 +206,7 @@ class DeploymentConfig:
     environments: tuple[str, ...]
     aws_role: str
     artifact_bucket: ValueReference | None = None
-    artifact_prefix: str = "{sha}"
+    artifact_prefix: str = "{environment}/{sha}"
     targets: tuple[S3TargetConfig, ...] = ()
     invalidations: tuple[CloudFrontInvalidationConfig, ...] = ()
     repository: ValueReference | None = None
