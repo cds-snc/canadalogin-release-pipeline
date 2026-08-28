@@ -292,7 +292,9 @@ data "aws_iam_policy_document" "github_actions" {
     sid       = "UpdateImagePointer"
     effect    = "Allow"
     actions   = ["ssm:GetParameter", "ssm:PutParameter"]
-    resources = [aws_ssm_parameter.image.arn]
+    resources = [
+      "arn:aws:ssm:${var.aws_region}:${var.account_id}:parameter/${trimprefix(var.ssm_parameter_name, "/")}"
+    ]
   }
 
   dynamic "statement" {
