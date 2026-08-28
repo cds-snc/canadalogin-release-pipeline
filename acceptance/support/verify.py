@@ -21,6 +21,7 @@ class VerificationContext:
     release_sha: str
     account_id: str
     region: str
+    environment: str
     expected_result: str
     pipeline_result: str
     repository: str | None
@@ -51,6 +52,7 @@ class VerificationContext:
             account_id=os.environ.get("AWS_ACCOUNT_ID", "429694360874"),
             region=os.environ.get("AWS_REGION")
             or os.environ.get("AWS_DEFAULT_REGION", "ca-central-1"),
+            environment=os.environ.get("ACCEPTANCE_ENVIRONMENT", ""),
             expected_result=os.environ.get("EXPECTED_RESULT", "success"),
             pipeline_result=os.environ.get("PIPELINE_RESULT", ""),
             repository=os.environ.get("GITHUB_REPOSITORY"),
@@ -343,14 +345,17 @@ def verify_common(context: VerificationContext) -> dict[str, str]:
     return resources
 
 
-def verify_react_site(resources: Mapping[str, str], release_sha: str) -> None:
+def verify_react_site(
+    resources: Mapping[str, str], release_sha: str, environment: str
+) -> None:
+    require(environment, "ACCEPTANCE_ENVIRONMENT must be set.")
     artifact_listing = aws_json(
         "s3api",
         "list-objects-v2",
         "--bucket",
         resource(resources, "artifact_bucket"),
         "--prefix",
-        release_sha,
+        f"{environment}/{release_sha}",
     )
     artifact_contents = artifact_listing.get("Contents")
     require(

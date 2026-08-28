@@ -11,7 +11,7 @@ from acceptance.support.verify import (
 def main() -> int:
     context = VerificationContext.from_environment()
     resources = verify_common(context)
-    verify_react_site(resources, context.release_sha)
+    verify_react_site(resources, context.release_sha, context.environment)
     print("Acceptance verification passed for react-ecs.")
     return 0
 
