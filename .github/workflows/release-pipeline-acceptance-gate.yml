@@ -1,4 +1,4 @@
-name: PR mergeability
+name: PR mergeability check
 
 on:
   pull_request:
