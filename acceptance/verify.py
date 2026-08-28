@@ -24,6 +24,7 @@ def run_verifier(
         {
             "ACCEPTANCE_TEST_ID": test.test_id,
             "ACCEPTANCE_RESOURCES": json.dumps(test.resources, sort_keys=True),
+            "ACCEPTANCE_ENVIRONMENT": str(test.release["environment"]),
             "RELEASE_SHA": release_sha,
             "PIPELINE_RESULT": pipeline_result,
             "EXPECTED_RESULT": expected_result,
