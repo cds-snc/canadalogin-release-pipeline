@@ -1,96 +1,55 @@
-name: PR mergeability check
+name: Release gate
 
 on:
   pull_request:
-    types: [opened, labeled, unlabeled, reopened, synchronize]
-  status:
-  workflow_run:
-    workflows: ["Integration / acceptance tests"]
-    types: [completed]
-  repository_dispatch:
-    types: [integration-acceptance-completed]
+    branches: [main]
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: read
   pull-requests: read
-  statuses: read
+  statuses: write
 
 jobs:
   gate:
-    name: PR mergeability check
-    if: >-
-      github.event_name == 'pull_request' ||
-      (github.event_name == 'status' && github.event.context == 'Integration / acceptance tests') ||
-      github.event_name == 'workflow_run' ||
-      github.event_name == 'repository_dispatch'
+    name: compute release gate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout mergeability policy
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - name: Require current release commit has passed integration tests
+      - name: Publish release-gate status
         env:
-          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
-          STATUS_CONTEXT: ${{ github.event.context }}
-          STATUS_SHA: ${{ github.event.sha }}
-          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
-          DISPATCH_PR_NUMBER: ${{ github.event.client_payload.pull_request_number }}
-          DISPATCH_RELEASE_SHA: ${{ github.event.client_payload.release_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
           acceptance_context='Integration / acceptance tests'
+          release_branch='release-please--branches--main'
 
-          if [[ "$EVENT_NAME" == status ]]; then
-            if [[ "$STATUS_CONTEXT" != "$acceptance_context" || -z "$STATUS_SHA" ]]; then
-              exit 0
-            fi
+          post() {
+            gh api --method POST "repos/$REPOSITORY/statuses/$HEAD_SHA" \
+              -f state="$1" \
+              -f context='release-gate' \
+              -f description="$2" \
+              -f target_url="$RUN_URL" >/dev/null
+            printf '%s: %s\n' "$1" "$2"
+          }
 
-            tested_sha="$STATUS_SHA"
-            lookup_sha="$STATUS_SHA"
-          elif [[ "$EVENT_NAME" == workflow_run ]]; then
-            tested_sha="$WORKFLOW_RUN_SHA"
-            lookup_sha="$WORKFLOW_RUN_SHA"
-          elif [[ "$EVENT_NAME" == repository_dispatch ]]; then
-            tested_sha="$DISPATCH_RELEASE_SHA"
-            lookup_sha="$DISPATCH_RELEASE_SHA"
-            pr_number="$DISPATCH_PR_NUMBER"
-          else
-            pr_number="$PULL_REQUEST_NUMBER"
-          fi
-
-          if [[ -z "${pr_number:-}" ]]; then
-            if [[ -z "${lookup_sha:-}" ]]; then
-              exit 0
-            fi
-            prs_json="$(gh api "repos/$REPOSITORY/commits/$lookup_sha/pulls")"
-            pr_number="$(jq -r --arg repository "$REPOSITORY" 'map(select(.state == "open" and .base.ref == "main" and .base.repo.full_name == $repository)) | .[0].number // empty' <<<"$prs_json")"
-            if [[ -z "$pr_number" ]]; then
-              exit 0
-            fi
-          fi
-
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
-          head_repository="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
-          head_ref="$(jq -r '.head.ref // ""' <<<"$pr_json")"
-          head_sha="$(jq -r '.head.sha // ""' <<<"$pr_json")"
-          base_branch="$(jq -r '.base.ref // ""' <<<"$pr_json")"
-          pr_state="$(jq -r '.state // ""' <<<"$pr_json")"
-          author_type="$(jq -r '.user.type // ""' <<<"$pr_json")"
-
-          if [[ "$head_repository" != "$REPOSITORY" || "$base_branch" != "main" || "$pr_state" != "open" || "$head_ref" != "release-please--branches--main" || "$author_type" != "Bot" ]]; then
-            printf '%s\n' 'Acceptance is not required for this pull request.'
+          if [[ "$HEAD_REPO" != "$REPOSITORY" || "$HEAD_REF" != "$release_branch" || "$AUTHOR_TYPE" != "Bot" ]]; then
+            post success 'Not a release pull request'
             exit 0
           fi
 
-          statuses_json="$(gh api "repos/$REPOSITORY/commits/$head_sha/statuses?per_page=100")"
-          CURRENT_SHA="$head_sha" \
-          TESTED_SHA="${tested_sha:-}" \
-          STATUSES_JSON="$statuses_json" \
-            python3 acceptance/scripts/check_mergeability.py
+          state="$(gh api "repos/$REPOSITORY/commits/$HEAD_SHA/statuses?per_page=100" |
+            jq -r --arg context "$acceptance_context" \
+            '[.[] | select(.context == $context)] | .[0].state // "pending"')"
+
+          case "$state" in
+            success) post success 'Acceptance tests passed for this commit' ;;
+            pending) post pending 'Waiting for acceptance tests' ;;
+            *)       post failure "Acceptance tests: $state" ;;
+          esac
