@@ -147,7 +147,10 @@ class DeployTest(unittest.TestCase):
 
         result = deploy_s3(config, context, runner=runner)
 
-        self.assertEqual(runner.commands[0], ("aws", "s3", "ls", "s3://builds/abc123/"))
+        self.assertEqual(
+            runner.commands[0],
+            ("aws", "s3", "ls", "s3://builds/dev/abc123/"),
+        )
         self.assertNotIn("DEPLOY_SECRET_1", runner.unset_environments[0])
         self.assertEqual(
             runner.commands[5],
@@ -155,7 +158,7 @@ class DeployTest(unittest.TestCase):
                 "aws",
                 "s3",
                 "sync",
-                "s3://builds/abc123",
+                "s3://builds/dev/abc123",
                 "s3://english",
                 "--only-show-errors",
                 "--delete",
@@ -259,7 +262,10 @@ class DeployTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "No build artifact exists"):
             deploy_s3(config, context, runner=runner)
 
-        self.assertEqual(runner.commands, [("aws", "s3", "ls", "s3://builds/abc123/")])
+        self.assertEqual(
+            runner.commands,
+            [("aws", "s3", "ls", "s3://builds/dev/abc123/")],
+        )
 
     def test_ecs_same_image_is_a_no_op(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")
