@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.1.0](https://github.com/cds-snc/canadalogin-release-system/compare/v1.0.14...v1.1.0) (2026-08-28)
+
+
+### Features
+
+* Clean up release pipeline logging ([#29](https://github.com/cds-snc/canadalogin-release-system/issues/29)) ([2be0857](https://github.com/cds-snc/canadalogin-release-system/commit/2be08575fe3b0c905b909b52aa29924cc1c243a2))
+* remove max-parallel and fail-fast, they offer no needed functionality and slow deployments ([#27](https://github.com/cds-snc/canadalogin-release-system/issues/27)) ([458e453](https://github.com/cds-snc/canadalogin-release-system/commit/458e453f5853c92303a15406250ef29b07a6dd60))
+
+
+### Bug Fixes
+
+* avoid redundant acceptance IAM policy updates ([#30](https://github.com/cds-snc/canadalogin-release-system/issues/30)) ([198a36b](https://github.com/cds-snc/canadalogin-release-system/commit/198a36b9545c5753befb13608828a291eb7f55cc))
+* improve release pipeline rollout logging ([#32](https://github.com/cds-snc/canadalogin-release-system/issues/32)) ([ce79220](https://github.com/cds-snc/canadalogin-release-system/commit/ce79220f206403d72d1c6d71941b38f96041b67e))
+* isolate build artifacts by environment ([#34](https://github.com/cds-snc/canadalogin-release-system/issues/34)) ([09da0be](https://github.com/cds-snc/canadalogin-release-system/commit/09da0be6e909a81181e6d7e4d01471a6f900bdb1))
+* verify environment-qualified React artifacts ([#35](https://github.com/cds-snc/canadalogin-release-system/issues/35)) ([8a74d4f](https://github.com/cds-snc/canadalogin-release-system/commit/8a74d4fc66d06a286311c92014fd22da2c4c43a3))
+
+
+### Code Refactoring
+
+* extract CLI action handlers ([#36](https://github.com/cds-snc/canadalogin-release-system/issues/36)) ([5d317ec](https://github.com/cds-snc/canadalogin-release-system/commit/5d317ec956cb5c894a1e0e8f8e6a8ecbf63e1168))
+
+
+### Continuous Integration
+
+* add PR title check ([#31](https://github.com/cds-snc/canadalogin-release-system/issues/31)) ([d899fde](https://github.com/cds-snc/canadalogin-release-system/commit/d899fde241212a1c3914d033569fdb334309e207))
+
+
+### Documentation
+
+* consolidate schema reference ([#33](https://github.com/cds-snc/canadalogin-release-system/issues/33)) ([3bc38ce](https://github.com/cds-snc/canadalogin-release-system/commit/3bc38ced39797ccf758862d30d82a4350c59c84e))
+
 ## [1.0.14](https://github.com/cds-snc/canadalogin-release-system/compare/v1.0.13...v1.0.14) (2026-08-28)
 
 
