@@ -53,7 +53,7 @@ class AcceptanceTest:
             "aws_region": release_region,
             "pipeline_id_prefix": self.release["pipeline_id_prefix"],
             "create_deployment": self.release["create_deployment"],
-            "expect_health_check_failure": self.release["expect_health_check_failure"],
+            "expect_test_failure": self.release["expect_test_failure"],
             "rebuild": self.release["rebuild"],
             "release_pipeline_vars": self.release_pipeline_vars(
                 release_account_id, release_region
@@ -187,7 +187,7 @@ def _load_manifest(manifest_path: Path) -> AcceptanceTest:
             "github_environment",
             "pipeline_id_prefix",
             "create_deployment",
-            "expect_health_check_failure",
+            "expect_test_failure",
             "rebuild",
             "aws_account_id",
             "aws_region",
@@ -218,9 +218,9 @@ def _load_manifest(manifest_path: Path) -> AcceptanceTest:
         f"{manifest_path}.release.create_deployment",
         default=False,
     )
-    release["expect_health_check_failure"] = _boolean(
-        release.get("expect_health_check_failure"),
-        f"{manifest_path}.release.expect_health_check_failure",
+    release["expect_test_failure"] = _boolean(
+        release.get("expect_test_failure"),
+        f"{manifest_path}.release.expect_test_failure",
         default=False,
     )
     release["rebuild"] = _boolean(

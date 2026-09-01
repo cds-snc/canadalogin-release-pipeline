@@ -85,7 +85,6 @@ load_tests:
 | `backend` | required for `ecs-service` and `spa-ecs` | Backend Dockerfile, build arguments, and optional service names. |
 | `site` | required for `static-site` | Static-site environment and S3 target definitions. |
 | `load_tests` | no | Optional staging load-test image. |
-| `hooks` | no | Repository-owned lifecycle commands. |
 | `events.repository_dispatch` | no | Dispatch event to environment mappings; targets must be deployable. |
 
 ## Value references
@@ -177,8 +176,8 @@ CloudFront invalidation paths per target. The build output defaults to
 `website/_site` and is stored in `RELEASE_STATIC_ARTIFACT_BUCKET`.
 
 Commands are argv arrays inside the implementation and run with Python
-`subprocess` and `shell=False`. Build and hook commands do not receive AWS or
-GitHub credentials.
+`subprocess` and `shell=False`. Build commands do not receive AWS or GitHub
+credentials.
 
 ## Docker builds
 
@@ -249,33 +248,6 @@ image serves multiple ECS services. The generated contract names are
 Before any S3 or ECS mutation, the environment workflow verifies all S3 artifacts and targets, CloudFront distributions, desired ECR image tags and digests, ECS services, task definitions, containers, and SSM parameter templates. Changed ECS task definitions use the verified ECR digest rather than a mutable tag. Structured ECS responses are consumed without writing them to workflow logs. ECS updates retain the current pipeline's `propagate-tags: SERVICE` behavior. Task-definition tags are not copied because the current deployment roles do not grant the additional tag read/write permissions.
 
 After an ECS service update, the deployer polls `describe-services` every 15 seconds for up to 600 seconds. It fails immediately when ECS reports a failed rollout and includes rollout states, reasons, failed-task counts, service counts, and recent service events in the error. The SSM image pointer is updated only after the service is stable.
-
-## Hooks
-
-```yaml
-hooks:
-  before_deploy:
-    - [python3, .github/release-hooks/preflight.py]
-  health_check:
-    - [python3, .github/release-hooks/health.py]
-  after_deploy:
-    - [python3, .github/release-hooks/announce.py]
-  on_failure:
-    - [python3, .github/release-hooks/collect-diagnostics.py]
-```
-
-Hooks run from the caller repository with:
-
-- all GitHub configuration variables as ordinary environment variables
-- `RELEASE_APPLICATION`
-- `RELEASE_ENVIRONMENT`
-- `RELEASE_DEPLOYMENT_SHA`
-- `RELEASE_FORCE_REDEPLOY`
-- explicitly mapped named secrets supported by the reusable workflow
-
-Adding a new arbitrary secret requires mapping a `HOOK_SECRET_*` name in the caller environment. Secrets are not packed into a JSON object.
-
-AWS access-key, web-identity, GitHub-token, and Actions runtime credential variables are removed before each configured hook starts. Hooks must use the documented hook secrets and variables; they cannot assume the deploy job's AWS session or GitHub token.
 
 ## Repository dispatch
 

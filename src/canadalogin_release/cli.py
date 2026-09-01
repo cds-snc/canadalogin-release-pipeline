@@ -15,10 +15,8 @@ from .deploy import (
     deploy_s3,
     preflight_ecs,
     preflight_s3,
-    target_context,
 )
 from .github import promotions_from_json, sync_deployment_comment
-from .hooks import execute_hook
 from .notifications import (
     notify,
     notify_pipeline_failure,
@@ -75,17 +73,6 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
         )
         deploy_parser.add_argument("--github-output", action="store_true")
-
-    hook_parser = subparsers.add_parser("hook", help="Run a repository lifecycle hook")
-    hook_parser.add_argument("hook_name")
-    hook_parser.add_argument("--config", required=True)
-    hook_parser.add_argument("--environment", required=True)
-    hook_parser.add_argument("--sha", required=True)
-    hook_parser.add_argument("--repository", default=".")
-    hook_parser.add_argument(
-        "--force-redeploy",
-        action="store_true",
-    )
 
     notify_parser = subparsers.add_parser("notify", help="Send a Slack notification")
     notify_parser.add_argument("--status", required=True)
@@ -195,18 +182,6 @@ def run_deploy_ecs(options: argparse.Namespace) -> int:
     return 0
 
 
-def run_hook(options: argparse.Namespace) -> int:
-    config = _load_config(options)
-    context, force_redeploy = _deployment_context(options)
-    execute_hook(
-        config,
-        options.hook_name,
-        target_context(config, context),
-        force_redeploy=force_redeploy,
-    )
-    return 0
-
-
 def run_notify(options: argparse.Namespace) -> int:
     config = _load_config(options)
     result = notify(
@@ -256,7 +231,6 @@ def main(arguments: Sequence[str] | None = None) -> int:
         "preflight-ecs": run_preflight_ecs,
         "deploy-s3": run_deploy_s3,
         "deploy-ecs": run_deploy_ecs,
-        "hook": run_hook,
         "notify": run_notify,
         "pr-comment": run_pr_comment,
         "pipeline-failure": run_pipeline_failure,

@@ -47,8 +47,8 @@ on:
         description: Create a GitHub deployment record for the test environment.
         required: true
         type: boolean
-      expect-health-check-failure:
-        description: Require the health check to fail and treat that failure as expected.
+      expect-test-failure:
+        description: Exercise an expected failure owned by the acceptance wrapper.
         required: true
         type: boolean
       rebuild:
@@ -148,7 +148,6 @@ jobs:
       environment: ${{ inputs.environment }}
       github-environment: ${{ inputs.github-environment }}
       create-deployment: ${{ inputs.create-deployment }}
-      expect-health-check-failure: ${{ inputs.expect-health-check-failure }}
       rebuild: ${{ inputs.rebuild }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
     secrets: inherit
@@ -179,6 +178,18 @@ jobs:
 
       - name: Set up release tooling
         uses: ./actions/setup
+
+      - name: Run expected test failure
+        if: inputs.expect-test-failure
+        id: expected_test_failure
+        continue-on-error: true
+        run: exit 1
+
+      - name: Validate expected test failure
+        if: inputs.expect-test-failure
+        env:
+          FAILURE_OUTCOME: ${{ steps.expected_test_failure.outcome }}
+        run: test "$FAILURE_OUTCOME" = failure
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1

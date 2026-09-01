@@ -113,6 +113,12 @@ class PipelineConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "unknown keys: notifications"):
             self.load(invalid)
 
+    def test_schema_two_rejects_lifecycle_hooks(self) -> None:
+        invalid = SCHEMA_TWO_CONFIG + "\nhooks: {}\n"
+
+        with self.assertRaisesRegex(ConfigError, "unknown keys: hooks"):
+            self.load(invalid)
+
     def test_schema_two_rejects_old_context_key(self) -> None:
         with self.assertRaisesRegex(
             ConfigError, "backend contains unknown keys: context"
