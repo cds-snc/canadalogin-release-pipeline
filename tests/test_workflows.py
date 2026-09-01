@@ -44,24 +44,31 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_deployment_requires_build_result_and_runs_independently(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
-        deployment = workflow.split("\n  deploy:\n", 1)[1]
+        pipeline = (
+            ROOT / ".github" / "workflows" / "release-pipeline.yml"
+        ).read_text()
+        deployment = pipeline.split("\n  deploy:\n", 1)[1]
 
-        self.assertIn("needs: [plan, release_please, required_builds]", workflow)
-        self.assertIn("needs.required_builds.result == 'success'", workflow)
+        self.assertIn("needs: [plan, release_please, required_builds]", pipeline)
+        self.assertIn("needs.required_builds.result == 'success'", pipeline)
         self.assertIn("strategy:\n      fail-fast: false\n      matrix:", deployment)
         self.assertNotIn("max-parallel: 1", deployment)
-        self.assertIn(
-            "pipeline_id:\n        description: Optional concurrency namespace",
-            workflow,
-        )
-        self.assertIn("default: default", workflow)
+        self.assertNotIn("aws-account-id:", workflow)
+        self.assertNotIn("aws-region:", workflow)
+        self.assertNotIn("github-environment:", workflow)
+        self.assertNotIn("create-deployment:", workflow)
+        self.assertNotIn("expect-health-check-failure:", workflow)
+        self.assertNotIn("pipeline_id:", workflow)
+        self.assertNotIn("release-pipeline-vars:", workflow)
         self.assertIn(
             "group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-",
-            workflow,
+            pipeline,
         )
-        self.assertIn("pipeline_id: ${{ inputs.pipeline_id }}", workflow)
+        self.assertIn("pipeline_id: ${{ inputs.pipeline-id }}", (
+            ROOT / ".github" / "workflows" / "acceptance-release.yml"
+        ).read_text())
         self.assertIn(
-            "aws-region: ${{ inputs.aws-region || matrix.aws_region }}", workflow
+            "aws-region: ${{ inputs.aws-region || matrix.aws_region }}", pipeline
         )
 
     def test_environment_deployments_share_the_pipeline_concurrency_namespace(
