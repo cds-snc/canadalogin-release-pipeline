@@ -268,9 +268,12 @@ def _targets(
     if event_name in {"pull_request", "pull_request_target"}:
         return ()
     if event_name == "repository_dispatch":
-        targets = config.repository_dispatch.get(
-            repository_dispatch_event, (config.environments.development,)
-        )
+        if repository_dispatch_event not in config.repository_dispatch:
+            raise ConfigError(
+                "Repository dispatch event is not configured: "
+                f"{repository_dispatch_event!r}"
+            )
+        targets = config.repository_dispatch[repository_dispatch_event]
         return _validate_targets(config, targets)
     if event_name == "workflow_dispatch":
         selected = manual_environment or config.environments.development

@@ -165,6 +165,18 @@ class PlannerTest(unittest.TestCase):
         )
         self.assertEqual(plan.target_environments, ("dev",))
 
+    def test_rejects_unconfigured_repository_dispatch_event(self) -> None:
+        config = self.config("canadalogin-static-website")
+
+        with self.assertRaisesRegex(ConfigError, "not configured"):
+            create_plan(
+                config,
+                event_name="repository_dispatch",
+                repository_dispatch_event="typo",
+                sha="abc123",
+                changed_paths=[],
+            )
+
     def test_force_redeploy_uses_existing_staging_artifacts(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")
         plan = create_plan(
