@@ -23,10 +23,6 @@ on:
         description: Create a GitHub deployment record for the acceptance environment.
         required: true
         type: boolean
-      expect-health-check-failure:
-        description: Require the acceptance health check to fail.
-        required: true
-        type: boolean
       pipeline-id:
         description: Acceptance pipeline concurrency namespace.
         required: true
@@ -53,7 +49,6 @@ jobs:
       aws-region: ${{ inputs.aws-region }}
       github-environment: ${{ inputs.github-environment }}
       create-deployment: ${{ inputs.create-deployment }}
-      expect-health-check-failure: ${{ inputs.expect-health-check-failure }}
       pipeline_id: ${{ inputs.pipeline-id }}
       environment: ${{ inputs.environment }}
       rebuild: ${{ inputs.rebuild }}
