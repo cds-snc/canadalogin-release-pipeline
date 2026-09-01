@@ -11,7 +11,6 @@ from typing import Any
 
 from .commands import CommandRunner, log
 from .config import (
-    DEPLOYMENT_WORKFLOW_SECRETS,
     ConfigError,
     DeploymentConfig,
     EcsServiceConfig,
@@ -905,7 +904,6 @@ def _run_aws(
         arguments,
         check=check,
         log_output=log_output,
-        unset_environment=DEPLOYMENT_WORKFLOW_SECRETS,
     )
 
 

@@ -104,6 +104,26 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("canadalogin-release hook", workflow)
         self.assertNotIn("expect-health-check-failure", workflow)
 
+    def test_infrastructure_values_are_not_mapped_from_secrets(self) -> None:
+        build = (ROOT / ".github" / "workflows" / "build.yml").read_text()
+        deploy = (
+            ROOT / ".github" / "workflows" / "deploy-environment.yml"
+        ).read_text()
+
+        for value in (
+            "VITE_API_BASE_URL",
+            "VITE_BACKEND_API_URL",
+            "VITE_GOOGLE_ANALYTICS_ID",
+            "FRONTEND_URL",
+            "FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET",
+            "FRONTEND_APP_S3_BUCKET",
+            "FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID",
+            "CLOUDFRONT_DISTRIBUTION_ID",
+        ):
+            with self.subTest(value=value):
+                self.assertNotIn(f"secrets.{value}", build)
+                self.assertNotIn(f"secrets.{value}", deploy)
+
     def test_workflow_checkouts_do_not_persist_credentials(self) -> None:
         for path in self.workflow_files():
             if path.suffix != ".yml":

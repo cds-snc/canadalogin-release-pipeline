@@ -18,7 +18,7 @@ environments: [dev, test, staging, prod]
 
 frontend:
     environment:
-        VITE_API_URL: {secret: VITE_API_BASE_URL}
+        VITE_API_URL: {var: VITE_API_BASE_URL}
         VITE_ENVIRONMENT: "{environment}"
     invalidation_paths: [/index.html, /assets/*]
 
@@ -129,13 +129,13 @@ class PipelineConfigTest(unittest.TestCase):
                 )
             )
 
-    def test_schema_two_rejects_numbered_secret_slots(self) -> None:
+    def test_schema_two_rejects_secret_references(self) -> None:
         invalid = SCHEMA_TWO_CONFIG.replace(
             "VITE_BACKEND_API_URL: {var: VITE_BACKEND_API_URL}",
             "VITE_BACKEND_API_URL: {secret: BUILD_SECRET_1}",
         )
 
-        with self.assertRaisesRegex(ConfigError, "do not expose"):
+        with self.assertRaisesRegex(ConfigError, "exactly one of: value, var"):
             self.load(invalid)
 
     def test_schema_two_requires_staging_for_load_tests(self) -> None:
@@ -191,8 +191,8 @@ class PipelineConfigTest(unittest.TestCase):
                 )
             )
 
-    def test_rejects_secret_the_workflow_does_not_expose(self) -> None:
-        with self.assertRaisesRegex(ConfigError, "do not expose"):
+    def test_rejects_secret_reference(self) -> None:
+        with self.assertRaisesRegex(ConfigError, "exactly one of: value, var"):
             ValueReference.parse(
                 {"secret": "UNMAPPED_SECRET"}, "build.environment.CUSTOM"
             )

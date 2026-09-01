@@ -89,17 +89,16 @@ load_tests:
 
 ## Value references
 
-Infrastructure and build values use one of three reference forms:
+Infrastructure and build values use one of two reference forms:
 
 ```yaml
 value: fixed-value
 var: GITHUB_CONFIGURATION_VARIABLE
-secret: GITHUB_ACTIONS_SECRET
 var: OPTIONAL_VARIABLE
   default: fallback
 ```
 
-Variables come from the release workflow's `RELEASE_PIPELINE_VARS` object after the job declares its GitHub environment. Secrets are explicitly mapped into only the Python step that needs them. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. The standard Slack secrets described below are used instead of Slack value references.
+Variables come from the release workflow's `RELEASE_PIPELINE_VARS` object after the job declares its GitHub environment. Frontend `VITE_*` values are normally Variables because they are embedded in browser-visible assets. The standard Slack secrets described below are used instead of value references.
 
 Supported template fields are:
 

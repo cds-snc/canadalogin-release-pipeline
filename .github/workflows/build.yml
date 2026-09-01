@@ -162,11 +162,6 @@ jobs:
           BUILD_NAME: ${{ inputs.name }}
           CONFIG_PATH: ${{ inputs.config-path }}
           RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
-          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
-          VITE_BACKEND_API_URL: ${{ secrets.VITE_BACKEND_API_URL }}
-          VITE_GOOGLE_ANALYTICS_ID: ${{ secrets.VITE_GOOGLE_ANALYTICS_ID }}
-          FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET: ${{ secrets.FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET }}
-          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
         run: >-
           canadalogin-release build
           --config "$CONFIG_PATH"
