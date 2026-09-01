@@ -7,9 +7,3 @@ backend:
   dockerfile: acceptance/tests/failure-ecs/app/Dockerfile
   build_args:
     APP_VERSION: "{release_version}"
-
-hooks:
-  health_check:
-    - [python3, acceptance/tests/failure-ecs/hooks/fail-health-check.py]
-  on_failure:
-    - [python3, acceptance/tests/failure-ecs/hooks/record-failure.py]
