@@ -257,4 +257,4 @@ events:
     gc-articles-update: [dev]
 ```
 
-Unknown repository dispatch event types default to dev. Pull requests only plan and comment; they never build or deploy. Pushes build configured artifacts and reconcile every enabled environment. Manual runs default to dev and rebuild only when `rebuild` is selected.
+Unknown repository dispatch event types fail planning. Pull requests only plan and comment; they never build or deploy. Pushes build configured artifacts and reconcile every enabled environment. Manual runs default to dev and rebuild only when `rebuild` is selected.
