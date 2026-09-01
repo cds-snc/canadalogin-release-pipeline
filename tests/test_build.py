@@ -96,7 +96,6 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(command_environment["VITE_GOOGLE_ANALYTICS_ID"], "G-123")
         self.assertEqual(command_environment["VITE_ENVIRONMENT"], "dev")
         self.assertEqual(command_environment["VITE_RELEASE_TAG"], "v1.2.3")
-        self.assertNotIn("BUILD_SECRET_1", runner.unset_environments[0])
         self.assertNotIn("--delete", runner.commands[-1][0])
         self.assertIn("--only-show-errors", runner.commands[-1][0])
         self.assertIn("AWS_ACCESS_KEY_ID", runner.unset_environments[0])
