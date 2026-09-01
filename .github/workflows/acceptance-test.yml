@@ -139,12 +139,12 @@ jobs:
       issues: write
       pull-requests: write
       statuses: write
-    uses: ./.github/workflows/release.yml
+    uses: ./.github/workflows/acceptance-release.yml
     with:
       config-path: ${{ inputs.config-path }}
       aws-account-id: ${{ inputs.aws-account-id }}
       aws-region: ${{ inputs.aws-region }}
-      pipeline_id: ${{ inputs.pipeline-id-prefix }}-${{ github.run_id }}
+      pipeline-id: ${{ inputs.pipeline-id-prefix }}-${{ github.run_id }}
       environment: ${{ inputs.environment }}
       github-environment: ${{ inputs.github-environment }}
       create-deployment: ${{ inputs.create-deployment }}
