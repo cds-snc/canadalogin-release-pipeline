@@ -9,7 +9,6 @@ release:
   github_environment: acceptance-tests
   pipeline_id_prefix: acceptance-standard
   create_deployment: false
-  expect_health_check_failure: false
   rebuild: true
 
 infrastructure:
