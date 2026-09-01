@@ -378,50 +378,6 @@ def verify_react_site(
     )
 
 
-def verify_failure_hook(context: VerificationContext) -> None:
-    require(
-        context.repository is not None and context.run_id is not None,
-        "GitHub workflow context is missing.",
-    )
-    output = command(
-        [
-            "gh",
-            "api",
-            "--paginate",
-            "--slurp",
-            f"repos/{context.repository}/actions/runs/{context.run_id}/jobs",
-        ]
-    )
-    pages = json.loads(output)
-    require(isinstance(pages, list), "GitHub returned an invalid jobs response.")
-    jobs = [
-        job for page in pages if isinstance(page, dict) for job in page.get("jobs", [])
-    ]
-    steps = [
-        step
-        for job in jobs
-        if isinstance(job, dict)
-        for step in job.get("steps", [])
-        if isinstance(step, dict)
-    ]
-    require(
-        any(
-            step.get("name") == "Validate health-check result"
-            and step.get("conclusion") == "success"
-            for step in steps
-        ),
-        "The expected health-check outcome was not validated.",
-    )
-    require(
-        any(
-            step.get("name") == "Run failure hooks"
-            and step.get("conclusion") == "success"
-            for step in steps
-        ),
-        "The failure hook did not complete successfully.",
-    )
-
-
 if __name__ == "__main__":
     print(
         "This module provides shared acceptance verification helpers.", file=sys.stderr

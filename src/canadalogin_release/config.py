@@ -213,14 +213,6 @@ class DeploymentConfig:
 
 
 @dataclass(frozen=True)
-class HookConfig:
-    before_deploy: tuple[tuple[str, ...], ...] = ()
-    health_check: tuple[tuple[str, ...], ...] = ()
-    after_deploy: tuple[tuple[str, ...], ...] = ()
-    on_failure: tuple[tuple[str, ...], ...] = ()
-
-
-@dataclass(frozen=True)
 class PipelineConfig:
     application: str
     aws_region: str
@@ -228,7 +220,6 @@ class PipelineConfig:
     release: ReleaseConfig
     builds: tuple[BuildConfig, ...]
     deployments: tuple[DeploymentConfig, ...]
-    hooks: HookConfig
     repository_dispatch: Mapping[str, tuple[str, ...]]
 
     @classmethod
@@ -275,7 +266,6 @@ def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
             "backend",
             "site",
             "load_tests",
-            "hooks",
             "events",
         },
         "configuration",
@@ -297,7 +287,6 @@ def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
         versioned=tuple(environment for environment in deploy if environment != "dev"),
     )
 
-    hooks = _parse_hooks(raw.get("hooks", {}))
     repository_dispatch = _parse_events(raw.get("events", {}), deploy)
 
     builds: list[BuildConfig] = []
@@ -326,28 +315,10 @@ def _parse_pipeline_v2(raw: Mapping[str, Any]) -> PipelineConfig:
         release=ReleaseConfig(),
         builds=tuple(builds),
         deployments=tuple(deployments),
-        hooks=hooks,
         repository_dispatch=repository_dispatch,
     )
     _validate_pipeline_config(config)
     return config
-
-
-def _parse_hooks(raw: object) -> HookConfig:
-    hooks_raw = _mapping(raw, "hooks")
-    _reject_unknown(
-        hooks_raw,
-        {"before_deploy", "health_check", "after_deploy", "on_failure"},
-        "hooks",
-    )
-    return HookConfig(
-        before_deploy=_commands(
-            hooks_raw.get("before_deploy", ()), "hooks.before_deploy"
-        ),
-        health_check=_commands(hooks_raw.get("health_check", ()), "hooks.health_check"),
-        after_deploy=_commands(hooks_raw.get("after_deploy", ()), "hooks.after_deploy"),
-        on_failure=_commands(hooks_raw.get("on_failure", ()), "hooks.on_failure"),
-    )
 
 
 def _parse_events(raw: object, deploy: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
@@ -725,13 +696,6 @@ def _validate_pipeline_config(config: PipelineConfig) -> None:
             )
     for environment in config.environments.deploy:
         config.deployment_roles(environment)
-
-
-def _commands(raw: object, location: str) -> tuple[tuple[str, ...], ...]:
-    commands = []
-    for index, command in enumerate(_sequence(raw, location)):
-        commands.append(_string_tuple(command, f"{location}[{index}]"))
-    return tuple(commands)
 
 
 def _mapping(raw: object, location: str) -> Mapping[str, Any]:

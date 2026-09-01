@@ -87,6 +87,14 @@ class WorkflowContractTest(unittest.TestCase):
             workflow,
         )
 
+    def test_deployment_workflow_has_no_lifecycle_hook_steps(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "deploy-environment.yml"
+        ).read_text()
+
+        self.assertNotIn("canadalogin-release hook", workflow)
+        self.assertNotIn("expect-health-check-failure", workflow)
+
     def test_workflow_checkouts_do_not_persist_credentials(self) -> None:
         for path in self.workflow_files():
             if path.suffix != ".yml":
