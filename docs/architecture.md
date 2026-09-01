@@ -4,7 +4,7 @@
 
 Use a reusable workflow as the orchestration boundary and co-versioned composite actions/Python as the implementation boundary.
 
-The public workflow is `.github/workflows/release.yml`. It calls two nested reusable workflows:
+The public workflow interface is `.github/workflows/release-system.yml`. It calls `.github/workflows/internal-release-system-interface.yml`, which contains the core release system implementation and calls two nested reusable workflows:
 
 - `.github/workflows/build.yml` declares the selected GitHub environment and builds one artifact.
 - `.github/workflows/deploy-environment.yml` declares the selected GitHub environment and deploys every component for it.

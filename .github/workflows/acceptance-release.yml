@@ -1,0 +1,56 @@
+name: Acceptance release pipeline
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: Path to the acceptance release configuration.
+        required: true
+        type: string
+      aws-account-id:
+        description: AWS account hosting the acceptance resources.
+        required: true
+        type: string
+      aws-region:
+        description: AWS region hosting the acceptance resources.
+        required: true
+        type: string
+      github-environment:
+        description: GitHub environment hosting the acceptance variables and secrets.
+        required: true
+        type: string
+      create-deployment:
+        description: Create a GitHub deployment record for the acceptance environment.
+        required: true
+        type: boolean
+      pipeline-id:
+        description: Acceptance pipeline concurrency namespace.
+        required: true
+        type: string
+      environment:
+        description: Acceptance deployment target.
+        required: true
+        type: string
+      rebuild:
+        description: Rebuild artifacts during the acceptance deployment.
+        required: true
+        type: boolean
+      release-pipeline-vars:
+        description: Per-test non-secret schema 2 infrastructure variables.
+        required: true
+        type: string
+
+jobs:
+  release:
+    uses: $/.github/workflows/internal-release-system-interface.yml
+    with:
+      config-path: ${{ inputs.config-path }}
+      aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region }}
+      github-environment: ${{ inputs.github-environment }}
+      create-deployment: ${{ inputs.create-deployment }}
+      pipeline_id: ${{ inputs.pipeline-id }}
+      environment: ${{ inputs.environment }}
+      rebuild: ${{ inputs.rebuild }}
+      release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
+    secrets: inherit

@@ -1,0 +1,35 @@
+name: CanadaLogin release system
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: Path to the caller repository's release configuration.
+        required: false
+        default: .github/release-pipeline-configuration.yml
+        type: string
+      environment:
+        description: Manual deployment target. Use "all" for every enabled environment.
+        required: false
+        default: ""
+        type: string
+      force-redeploy:
+        description: Force same-version ECS services to redeploy.
+        required: false
+        default: false
+        type: boolean
+      rebuild:
+        description: Rebuild artifacts during a manual deployment.
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  release:
+    uses: $/.github/workflows/internal-release-system-interface.yml
+    with:
+      config-path: ${{ inputs.config-path }}
+      environment: ${{ inputs.environment }}
+      force-redeploy: ${{ inputs.force-redeploy }}
+      rebuild: ${{ inputs.rebuild }}
+    secrets: inherit

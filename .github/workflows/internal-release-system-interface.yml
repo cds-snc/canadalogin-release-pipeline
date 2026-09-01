@@ -1,55 +1,44 @@
-name: CanadaLogin release pipeline
+name: CanadaLogin internal release system interface
 
 on:
   workflow_call:
     inputs:
       config-path:
-        description: Path to the caller repository's release configuration.
-        required: false
-        default: .github/release-pipeline-configuration.yml
+        required: true
         type: string
       aws-account-id:
-        description: Optional AWS account ID override for isolated test callers.
         required: false
         default: ""
         type: string
       aws-region:
-        description: Optional AWS region override for isolated test callers.
         required: false
         default: ""
         type: string
       github-environment:
-        description: Optional GitHub environment override for isolated test callers.
         required: false
         default: ""
         type: string
       create-deployment:
-        description: Create a GitHub deployment record for the environment.
         required: false
         default: true
         type: boolean
       pipeline_id:
-        description: Optional concurrency namespace for independent pipelines in one repository.
         required: false
         default: default
         type: string
       environment:
-        description: Manual deployment target. Use "all" for every enabled environment.
         required: false
         default: ""
         type: string
       force-redeploy:
-        description: Force same-version ECS services to redeploy.
         required: false
         default: false
         type: boolean
       rebuild:
-        description: Rebuild artifacts during a manual deployment.
         required: false
         default: false
         type: boolean
       release-pipeline-vars:
-        description: Optional JSON object of non-secret release variables for isolated callers.
         required: false
         default: ""
         type: string
@@ -253,5 +242,4 @@ jobs:
       notify: ${{ matrix.notify }}
       notify-failure: ${{ matrix.notify_failure }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
-
     secrets: inherit
