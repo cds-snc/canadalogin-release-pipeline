@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,30 +32,6 @@ ALERT_NOTIFICATION_WORKFLOW_SECRETS = frozenset(
 NOTIFICATION_WORKFLOW_SECRETS = frozenset(
     {*INFO_NOTIFICATION_WORKFLOW_SECRETS, *ALERT_NOTIFICATION_WORKFLOW_SECRETS}
 )
-BUILD_WORKFLOW_SECRETS = frozenset(
-    {
-        "FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET",
-        "FRONTEND_URL",
-        "VITE_API_BASE_URL",
-        "VITE_BACKEND_API_URL",
-        "VITE_GOOGLE_ANALYTICS_ID",
-    }
-)
-DEPLOYMENT_WORKFLOW_SECRETS = frozenset(
-    {
-        "CLOUDFRONT_DISTRIBUTION_ID",
-        "FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET",
-        "FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID",
-        "FRONTEND_APP_S3_BUCKET",
-    }
-)
-SUPPORTED_WORKFLOW_SECRETS = frozenset(
-    {
-        *NOTIFICATION_WORKFLOW_SECRETS,
-        *BUILD_WORKFLOW_SECRETS,
-        *DEPLOYMENT_WORKFLOW_SECRETS,
-    }
-)
 
 DEFAULT_DEPLOY_ENVIRONMENTS = ("dev", "test", "staging", "prod")
 DEFAULT_NODE_VERSION = "22"
@@ -76,7 +51,6 @@ class ValueReference:
         cls,
         raw: object,
         location: str,
-        allowed_secrets: frozenset[str] = SUPPORTED_WORKFLOW_SECRETS,
     ) -> ValueReference:
         if isinstance(raw, str):
             return cls("value", raw)
@@ -84,20 +58,15 @@ class ValueReference:
             raise ConfigError(f"{location} must be a string or reference mapping")
 
         keys = set(raw)
-        source_keys = keys & {"value", "var", "secret"}
-        if len(source_keys) != 1 or keys - {"value", "var", "secret", "default"}:
+        source_keys = keys & {"value", "var"}
+        if len(source_keys) != 1 or keys - {"value", "var", "default"}:
             raise ConfigError(
-                f"{location} must contain exactly one of: value, var, secret"
+                f"{location} must contain exactly one of: value, var"
             )
         source = next(iter(source_keys))
         value = raw[source]
         if not isinstance(value, str) or not value:
             raise ConfigError(f"{location}.{source} must be a non-empty string")
-        if source == "secret" and value not in allowed_secrets:
-            raise ConfigError(
-                f"{location}.secret references {value!r}, which the reusable "
-                "workflows do not expose"
-            )
         default = raw.get("default")
         if default is not None and not isinstance(default, str):
             raise ConfigError(f"{location}.default must be a string")
@@ -106,9 +75,7 @@ class ValueReference:
     def resolve(
         self,
         variables: Mapping[str, str],
-        environment: Mapping[str, str] | None = None,
     ) -> str:
-        environment = environment or os.environ
         if self.source == "value":
             return self.value
         if self.source == "var":
@@ -116,12 +83,6 @@ class ValueReference:
             if value is None:
                 raise ConfigError(f"GitHub variable {self.value!r} is not set")
             return value
-        value = environment.get(self.value, self.default)
-        if value is None:
-            raise ConfigError(f"GitHub secret {self.value!r} is not available")
-        if not value:
-            raise ConfigError(f"GitHub secret {self.value!r} is empty")
-        return value
 
 
 @dataclass(frozen=True)
@@ -346,7 +307,7 @@ def _parse_events(raw: object, deploy: tuple[str, ...]) -> dict[str, tuple[str, 
 def _parse_v2_environment(raw: object, location: str) -> Mapping[str, ValueReference]:
     environment_raw = _mapping(raw, location)
     return {
-        key: ValueReference.parse(value, f"{location}.{key}", BUILD_WORKFLOW_SECRETS)
+        key: ValueReference.parse(value, f"{location}.{key}")
         for key, value in environment_raw.items()
     }
 

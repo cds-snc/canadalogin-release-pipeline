@@ -168,10 +168,6 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
           RELEASE_FORCE_REDEPLOY: ${{ inputs.force-redeploy }}
           RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
-          FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET: ${{ secrets.FRONTEND_APP_BUILD_ARTIFACTS_S3_BUCKET }}
-          FRONTEND_APP_S3_BUCKET: ${{ secrets.FRONTEND_APP_S3_BUCKET }}
-          FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.FRONTEND_APP_CLOUDFRONT_DISTRIBUTION_ID }}
-          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
         run: >-
           canadalogin-release preflight-s3
           --config "$CONFIG_PATH"

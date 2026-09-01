@@ -19,7 +19,6 @@ class RuntimeContext:
     release_tag: str | None
     github_ref: str
     variables: Mapping[str, str]
-    secrets: Mapping[str, str]
     build_timestamp: str
 
     @property
@@ -54,7 +53,6 @@ class RuntimeContext:
         release_tag: str | None,
         github_ref: str,
         variables: Mapping[str, str] | None = None,
-        secrets: Mapping[str, str] | None = None,
         now: datetime | None = None,
     ) -> RuntimeContext:
         timestamp = (now or datetime.now(UTC)).astimezone(UTC)
@@ -65,7 +63,6 @@ class RuntimeContext:
             release_tag=release_tag,
             github_ref=github_ref,
             variables=variables or {},
-            secrets=secrets or os.environ,
             build_timestamp=timestamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
         )
 
@@ -76,7 +73,7 @@ def resolve_reference(
     *,
     repository: str = "",
 ) -> str:
-    value = reference.resolve(context.variables, context.secrets)
+    value = reference.resolve(context.variables)
     return render(value, context.template_values(repository=repository))
 
 

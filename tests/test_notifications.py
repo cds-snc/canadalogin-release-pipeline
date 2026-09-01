@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from canadalogin_release.config import PipelineConfig
 from canadalogin_release.notifications import (
@@ -30,21 +32,25 @@ class NotificationTest(unittest.TestCase):
             sha="abc123",
             release_tag=None,
             github_ref="",
-            secrets={
+        )
+        requests: list[tuple[str, dict[str, str]]] = []
+
+        with patch.dict(
+            os.environ,
+            {
                 "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK": "https://hooks.example/base",
                 "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1": "https://hooks.example/one",
                 "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_3": "https://hooks.example/three",
             },
-        )
-        requests: list[tuple[str, dict[str, str]]] = []
-
-        result = notify(
-            config,
-            "build-failure",
-            context,
-            workflow_url="https://github.example/run/1",
-            sender=lambda url, body: requests.append((url, json.loads(body))),
-        )
+            clear=True,
+        ):
+            result = notify(
+                config,
+                "build-failure",
+                context,
+                workflow_url="https://github.example/run/1",
+                sender=lambda url, body: requests.append((url, json.loads(body))),
+            )
 
         self.assertEqual(result.delivered, 2)
         self.assertEqual(
@@ -64,19 +70,23 @@ class NotificationTest(unittest.TestCase):
             sha="abc123",
             release_tag=None,
             github_ref="",
-            secrets={
-                "RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK": "https://hooks.example/info",
-            },
         )
         requests: list[tuple[str, dict[str, str]]] = []
 
-        result = notify(
-            config,
-            "deploy-start",
-            context,
-            workflow_url="https://github.example/run/1",
-            sender=lambda url, body: requests.append((url, json.loads(body))),
-        )
+        with patch.dict(
+            os.environ,
+            {
+                "RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK": "https://hooks.example/info",
+            },
+            clear=True,
+        ):
+            result = notify(
+                config,
+                "deploy-start",
+                context,
+                workflow_url="https://github.example/run/1",
+                sender=lambda url, body: requests.append((url, json.loads(body))),
+            )
 
         self.assertEqual(result.delivered, 1)
         self.assertEqual(requests[0][0], "https://hooks.example/info")
@@ -152,21 +162,25 @@ class NotificationTest(unittest.TestCase):
             sha="abc123",
             release_tag=None,
             github_ref="",
-            secrets={
-                "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1": "https://hooks.example/one",
-                "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_2": "https://hooks.example/two",
-            },
         )
         requests: list[tuple[str, dict[str, str]]] = []
 
-        result = notify(
-            config,
-            "build-failure",
-            context,
-            workflow_url="https://github.example/run/1",
-            detail="frontend",
-            sender=lambda url, body: requests.append((url, json.loads(body))),
-        )
+        with patch.dict(
+            os.environ,
+            {
+                "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1": "https://hooks.example/one",
+                "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_2": "https://hooks.example/two",
+            },
+            clear=True,
+        ):
+            result = notify(
+                config,
+                "build-failure",
+                context,
+                workflow_url="https://github.example/run/1",
+                detail="frontend",
+                sender=lambda url, body: requests.append((url, json.loads(body))),
+            )
 
         self.assertEqual(result.delivered, 2)
         self.assertEqual(

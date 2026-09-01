@@ -58,7 +58,9 @@ class GitTest(unittest.TestCase):
         self.assertEqual(pull_request_paths, ())
         self.assertEqual(two_dot_paths, (".deployed_versions/test.json",))
 
-    def test_git_checkout_hook_does_not_inherit_build_secrets(self) -> None:
+    def test_git_checkout_hook_inherits_build_variables_but_not_notification_webhooks(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
             self.git(repository, "init", "-b", "main")
@@ -70,16 +72,23 @@ class GitTest(unittest.TestCase):
             captured = repository / "captured-secret.txt"
             hook = repository / ".git" / "hooks" / "post-checkout"
             hook.write_text(
-                f"#!/bin/sh\nprintf '%s' \"${{VITE_BACKEND_API_URL-unset}}\" > {captured}\n"
+                "#!/bin/sh\n"
+                f"printf '%s:%s' \"${{VITE_BACKEND_API_URL-unset}}\" \"${{RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK-unset}}\" > {captured}\n"
             )
             hook.chmod(0o755)
 
-            with patch.dict(os.environ, {"VITE_BACKEND_API_URL": "sensitive"}):
+            with patch.dict(
+                os.environ,
+                {
+                    "VITE_BACKEND_API_URL": "configured-variable",
+                    "RELEASE_PIPELINE_DEPLOY_INFO_SLACK_WEBHOOK": "sensitive",
+                },
+            ):
                 run_git(["checkout", "-b", "other"], repository)
 
             value = captured.read_text()
 
-        self.assertEqual(value, "unset")
+        self.assertEqual(value, "configured-variable:unset")
 
 
 if __name__ == "__main__":

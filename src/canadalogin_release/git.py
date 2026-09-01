@@ -5,7 +5,7 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
-from .config import SUPPORTED_WORKFLOW_SECRETS
+from .config import NOTIFICATION_WORKFLOW_SECRETS
 
 
 class GitError(RuntimeError):
@@ -16,7 +16,7 @@ def run_git(
     arguments: Sequence[str], repository: str | Path = ".", *, required: bool = True
 ) -> str:
     environment = os.environ.copy()
-    for name in SUPPORTED_WORKFLOW_SECRETS:
+    for name in NOTIFICATION_WORKFLOW_SECRETS:
         environment.pop(name, None)
     result = subprocess.run(
         ["git", *arguments],

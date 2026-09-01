@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .commands import GITHUB_CREDENTIALS, WORKFLOW_CREDENTIALS, CommandRunner, log
-from .config import BUILD_WORKFLOW_SECRETS, BuildConfig, ConfigError, PipelineConfig
+from .config import BuildConfig, ConfigError, PipelineConfig
 from .git import run_git
 from .runtime import RuntimeContext, render, render_s3_prefix, resolve_reference
 from .versions import deployment_sha, release_tag_for_sha
@@ -100,7 +100,7 @@ def _execute_command_build(
             command,
             cwd=working_directory,
             environment=command_environment,
-            unset_environment=(*BUILD_WORKFLOW_SECRETS, *WORKFLOW_CREDENTIALS),
+            unset_environment=WORKFLOW_CREDENTIALS,
         )
 
     if build.s3_artifact:
@@ -112,7 +112,7 @@ def _execute_command_build(
             ["aws", "s3", "ls", f"{destination}/"],
             check=False,
             log_output=False,
-            unset_environment=(*BUILD_WORKFLOW_SECRETS, *GITHUB_CREDENTIALS),
+            unset_environment=GITHUB_CREDENTIALS,
         )
         if listing.returncode == 0 and listing.stdout.strip():
             log(f"Artifact already exists at {destination}; skipping upload.")
@@ -127,7 +127,7 @@ def _execute_command_build(
             command.append("--delete")
         runner.run(
             command,
-            unset_environment=(*BUILD_WORKFLOW_SECRETS, *GITHUB_CREDENTIALS),
+            unset_environment=GITHUB_CREDENTIALS,
         )
     return ""
 
@@ -188,12 +188,12 @@ def _execute_docker_build(
     command.append(str(context.repository / docker.context))
     runner.run(
         command,
-        unset_environment=(*BUILD_WORKFLOW_SECRETS, *WORKFLOW_CREDENTIALS),
+        unset_environment=WORKFLOW_CREDENTIALS,
     )
     for tag in tags:
         runner.run(
             ["docker", "push", tag],
-            unset_environment=(*BUILD_WORKFLOW_SECRETS, *WORKFLOW_CREDENTIALS),
+            unset_environment=WORKFLOW_CREDENTIALS,
         )
     if "sha" in docker.tags and _parse_ecr_repository(repository)[0]:
         image_digest = _ecr_image_digest(repository, context.sha, runner)
@@ -225,7 +225,7 @@ def _ensure_immutable_ecr_repository(
         command,
         check=False,
         log_output=False,
-        unset_environment=(*BUILD_WORKFLOW_SECRETS, *GITHUB_CREDENTIALS),
+        unset_environment=GITHUB_CREDENTIALS,
     )
     try:
         document = json.loads(result.stdout)
@@ -341,7 +341,7 @@ def _ecr_image_digest(
         command,
         check=False,
         log_output=False,
-        unset_environment=(*BUILD_WORKFLOW_SECRETS, *GITHUB_CREDENTIALS),
+        unset_environment=GITHUB_CREDENTIALS,
     )
     if result.returncode != 0:
         if missing_ok:

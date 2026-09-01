@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -81,9 +82,9 @@ def notify(
         raise ConfigError(f"Unknown notification status {status!r}") from error
 
     if channel == "info":
-        webhooks = default_info_webhook_values(context.secrets)
+        webhooks = default_info_webhook_values(os.environ)
     else:
-        webhooks = default_alert_webhook_values(context.secrets)
+        webhooks = default_alert_webhook_values(os.environ)
     if not webhooks:
         log(f"No {channel} Slack webhook is configured; skipping notification.")
         return NotificationResult(delivered=0, skipped=True)
