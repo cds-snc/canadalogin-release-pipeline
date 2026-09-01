@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.2.0](https://github.com/cds-snc/canadalogin-release-system/compare/v1.1.0...v1.2.0) (2026-09-01)
+
+
+### Features
+
+* requirements.lock ([#39](https://github.com/cds-snc/canadalogin-release-system/issues/39)) ([e0fda9d](https://github.com/cds-snc/canadalogin-release-system/commit/e0fda9d7de4abe162de00d3342bfd38eb97bb490))
+
+
+### Bug Fixes
+
+* reject unconfigured repository dispatch events ([#42](https://github.com/cds-snc/canadalogin-release-system/issues/42)) ([08c0503](https://github.com/cds-snc/canadalogin-release-system/commit/08c0503f8231b36c5624a78fe0de7a776620eb8a))
+* remove obsolete acceptance health check fields ([#48](https://github.com/cds-snc/canadalogin-release-system/issues/48)) ([ae9fa7b](https://github.com/cds-snc/canadalogin-release-system/commit/ae9fa7bcf7a671d0f130c8a1e60b5515a85e8e82))
+
+
+### Code Refactoring
+
+* isolate acceptance workflow overrides ([#43](https://github.com/cds-snc/canadalogin-release-system/issues/43)) ([dd9e2ec](https://github.com/cds-snc/canadalogin-release-system/commit/dd9e2eccdaf1ce75a710ffaa1a10e5bb4a7d52a4))
+* make load-test builds required ([#37](https://github.com/cds-snc/canadalogin-release-system/issues/37)) ([72aef24](https://github.com/cds-snc/canadalogin-release-system/commit/72aef242c37f266bcbdf8c3e4c60bb95814a34aa))
+* remove lifecycle hooks ([#44](https://github.com/cds-snc/canadalogin-release-system/issues/44)) ([43bc8bd](https://github.com/cds-snc/canadalogin-release-system/commit/43bc8bd67254338018cd795eb02a53d7e252e4a8))
+* remove schema secret references ([#41](https://github.com/cds-snc/canadalogin-release-system/issues/41)) ([faa4b15](https://github.com/cds-snc/canadalogin-release-system/commit/faa4b15720efb8082fa65b05871d9cada873ac25))
+* require load-test builds ([72aef24](https://github.com/cds-snc/canadalogin-release-system/commit/72aef242c37f266bcbdf8c3e4c60bb95814a34aa))
+
 ## [1.1.0](https://github.com/cds-snc/canadalogin-release-system/compare/v1.0.14...v1.1.0) (2026-08-28)
 
 
