@@ -53,7 +53,6 @@ class BuildTest(unittest.TestCase):
         *,
         release_tag: str | None = "v1.2.3",
         variables: Mapping[str, str] | None = None,
-        secrets: Mapping[str, str] | None = None,
     ) -> RuntimeContext:
         return RuntimeContext.create(
             repository=repository,
@@ -62,7 +61,6 @@ class BuildTest(unittest.TestCase):
             release_tag=release_tag,
             github_ref="refs/heads/main",
             variables=variables,
-            secrets=secrets,
             now=datetime(2026, 8, 12, 18, 30, tzinfo=UTC),
         )
 

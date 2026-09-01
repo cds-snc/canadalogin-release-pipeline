@@ -83,7 +83,6 @@ class DeployTest(unittest.TestCase):
         self,
         repository: Path,
         variables: Mapping[str, str],
-        secrets: Mapping[str, str] | None = None,
     ) -> RuntimeContext:
         return RuntimeContext.create(
             repository=repository,
@@ -92,7 +91,6 @@ class DeployTest(unittest.TestCase):
             release_tag=None,
             github_ref="refs/heads/main",
             variables=variables,
-            secrets=secrets,
         )
 
     @staticmethod
