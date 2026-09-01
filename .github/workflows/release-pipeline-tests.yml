@@ -176,7 +176,7 @@ jobs:
       aws-region: ${{ matrix.aws_region }}
       pipeline-id-prefix: ${{ matrix.pipeline_id_prefix }}
       create-deployment: ${{ matrix.create_deployment }}
-      expect-health-check-failure: ${{ matrix.expect_health_check_failure }}
+      expect-test-failure: ${{ matrix.expect_test_failure }}
       rebuild: ${{ matrix.rebuild }}
       release-pipeline-vars: ${{ matrix.release_pipeline_vars }}
     secrets: inherit
