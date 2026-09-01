@@ -2,7 +2,7 @@
 
 This repository centralizes the release system used by CanadaLogin applications. A caller owns two small files:
 
-1. `.github/workflows/release-pipeline.yml`, which calls the versioned reusable workflow.
+1. `.github/workflows/release-system.yml`, which calls the versioned public reusable workflow.
 2. `.github/release-pipeline-configuration.yml`, which declares the application profile, environment list, and optional hooks.
 
 
@@ -42,14 +42,14 @@ The release pipeline uses files in `.deployed_versions/` to track the DESIRED ap
 
 ### 3. Invoke the release pipeline from GitHub Actions
 
-Copy [the caller workflow](examples/caller/release-pipeline.yml) to `.github/workflows/release-pipeline.yml`. Copy the closest application configuration from [examples](examples) to `.github/release-pipeline-configuration.yml`, then update its resource references and commands.
+Copy [the caller workflow](examples/caller/release-system.yml) to `.github/workflows/release-system.yml`. Copy the closest application configuration from [examples](examples) to `.github/release-pipeline-configuration.yml`, then update its resource references and commands.
 
 The caller examples pin a semver release. Optionally replace the release tag with a commit SHA for maximum immutability guarantees.
 
 ```yaml
 jobs:
   release:
-    uses: cds-snc/canadalogin-release-system/.github/workflows/release.yml@v1.0.6
+    uses: cds-snc/canadalogin-release-system/.github/workflows/release-system.yml@v1.0.6
     secrets: inherit
 ```
 

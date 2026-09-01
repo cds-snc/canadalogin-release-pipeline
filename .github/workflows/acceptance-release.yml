@@ -42,7 +42,7 @@ on:
 
 jobs:
   release:
-    uses: $/.github/workflows/release-pipeline.yml
+    uses: $/.github/workflows/internal-release-system-interface.yml
     with:
       config-path: ${{ inputs.config-path }}
       aws-account-id: ${{ inputs.aws-account-id }}

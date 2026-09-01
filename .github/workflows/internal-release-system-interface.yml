@@ -1,4 +1,4 @@
-name: CanadaLogin release pipeline internals
+name: CanadaLogin internal release system interface
 
 on:
   workflow_call:

@@ -43,12 +43,21 @@ class WorkflowContractTest(unittest.TestCase):
                 self.assertNotIn("pull_request_target", path.read_text())
 
     def test_deployment_requires_build_result_and_runs_independently(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+        workflow = (
+            ROOT / ".github" / "workflows" / "release-system.yml"
+        ).read_text()
         pipeline = (
-            ROOT / ".github" / "workflows" / "release-pipeline.yml"
+            ROOT
+            / ".github"
+            / "workflows"
+            / "internal-release-system-interface.yml"
         ).read_text()
         deployment = pipeline.split("\n  deploy:\n", 1)[1]
 
+        self.assertIn("name: CanadaLogin release system\n", workflow)
+        self.assertIn(
+            "name: CanadaLogin internal release system interface\n", pipeline
+        )
         self.assertIn("needs: [plan, release_please, required_builds]", pipeline)
         self.assertIn("needs.required_builds.result == 'success'", pipeline)
         self.assertIn("strategy:\n      fail-fast: false\n      matrix:", deployment)
