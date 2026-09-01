@@ -273,8 +273,6 @@ Hooks run from the caller repository with:
 - `RELEASE_FORCE_REDEPLOY`
 - explicitly mapped named secrets supported by the reusable workflow
 
-Adding a new arbitrary secret requires mapping a `HOOK_SECRET_*` name in the caller environment. Secrets are not packed into a JSON object.
-
 AWS access-key, web-identity, GitHub-token, and Actions runtime credential variables are removed before each configured hook starts. Hooks must use the documented hook secrets and variables; they cannot assume the deploy job's AWS session or GitHub token.
 
 ## Repository dispatch
