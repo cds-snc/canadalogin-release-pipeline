@@ -1,3 +1,5 @@
+# This is the end-user-facing workflow for the CanadaLogin release system. It provides a simple interface for
+# manual deployments and rebuilds. The bulk of the logic is implemented in src/.
 name: CanadaLogin release system
 
 on:
