@@ -104,6 +104,19 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("canadalogin-release hook", workflow)
         self.assertNotIn("expect-health-check-failure", workflow)
 
+    def test_plan_workflow_formats_build_and_deployment_matrices(self) -> None:
+        workflow = (
+            ROOT
+            / ".github"
+            / "workflows"
+            / "internal-release-system-interface.yml"
+        ).read_text()
+
+        self.assertIn("printf 'Required builds:\\n'", workflow)
+        self.assertIn(".required_build_matrix | fromjson", workflow)
+        self.assertIn("printf '\\nDeployments:\\n'", workflow)
+        self.assertIn(".deployment_matrix | fromjson", workflow)
+
     def test_workflow_checkouts_do_not_persist_credentials(self) -> None:
         for path in self.workflow_files():
             if path.suffix != ".yml":
