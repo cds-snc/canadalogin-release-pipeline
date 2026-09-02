@@ -158,14 +158,21 @@ class WorkflowContractTest(unittest.TestCase):
                         workflow.count("persist-credentials: false"), checkout_count
                     )
 
-    def test_workflows_use_actionlint_supported_environment_syntax(self) -> None:
-        for path in self.workflow_files():
-            if path.suffix == ".yml":
-                with self.subTest(path=path.name):
-                    workflow = path.read_text()
-                    self.assertNotIn("deployment:", workflow)
-                    self.assertNotIn("&deployment-environment", workflow)
-                    self.assertNotIn("*deployment-environment", workflow)
+    def test_acceptance_jobs_use_environments_without_deployments(self) -> None:
+        acceptance = (ROOT / ".github" / "workflows" / "acceptance-tests.yml").read_text()
+        acceptance_test = (
+            ROOT / ".github" / "workflows" / "run-one-acceptance-test.yml"
+        ).read_text()
+        build = (ROOT / ".github" / "workflows" / "build.yml").read_text()
+        deploy = (ROOT / ".github" / "workflows" / "deploy-environment.yml").read_text()
+
+        self.assertIn("name: acceptance-tests\n      deployment: false", acceptance)
+        self.assertEqual(acceptance_test.count("deployment: false"), 2)
+        self.assertEqual(build.count("deployment: false"), 2)
+        self.assertIn(
+            "deployment: ${{ inputs.github-environment != 'acceptance-tests' }}",
+            deploy,
+        )
 
     def test_only_sbom_build_workflow_has_snapshot_write_permission(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
@@ -181,7 +188,7 @@ class WorkflowContractTest(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "unit-tests.yml").read_text()
 
         self.assertIn(
-            "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7", workflow
+            "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12", workflow
         )
         self.assertIn('"$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml', workflow)
 

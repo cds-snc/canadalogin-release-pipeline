@@ -27,7 +27,7 @@ jobs:
           terraform_version: 1.9.4
 
       - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
       - name: Lint GitHub Actions workflows
         run: >-
