@@ -18,7 +18,6 @@ env:
 
 concurrency:
   group: canadalogin-release-acceptance-tests
-  queue: max
 
 permissions:
   actions: read
@@ -36,38 +35,31 @@ jobs:
       contents: read
       pull-requests: read
     steps:
+      - name: Checkout trusted workflow source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Set up release tooling
+        uses: ./actions/setup
+
       - name: Validate release-please pull request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pull-request-number }}
           RELEASE_SHA: ${{ inputs.release-sha }}
           REPOSITORY: ${{ github.repository }}
           WORKFLOW_REF: ${{ github.ref_name }}
           WORKFLOW_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          head_repository="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
-          head_ref="$(jq -r '.head.ref // ""' <<<"$pr_json")"
-          head_sha="$(jq -r '.head.sha // ""' <<<"$pr_json")"
-          base_branch="$(jq -r '.base.ref // ""' <<<"$pr_json")"
-          pr_state="$(jq -r '.state // ""' <<<"$pr_json")"
-          author_type="$(jq -r '.user.type // ""' <<<"$pr_json")"
-          release_label="$(jq -r '[.labels[]?.name] | index("autorelease: pending") // empty' <<<"$pr_json")"
-
-          if [[ "$head_repository" != "$REPOSITORY" || "$base_branch" != "main" || "$pr_state" != "open" ]]; then
-            printf '%s\n' 'Acceptance tests require an open pull request in the release repository targeting main.' >&2
-            exit 1
-          fi
-          if [[ "$head_ref" != "release-please--branches--main" || "$author_type" != "Bot" || -z "$release_label" ]]; then
-            printf '%s\n' 'Acceptance tests only run for release-please pull requests.' >&2
-            exit 1
-          fi
-          if [[ "$head_sha" != "$RELEASE_SHA" || "$WORKFLOW_SHA" != "$RELEASE_SHA" || "$WORKFLOW_REF" != "$head_ref" ]]; then
-            printf '%s\n' 'The requested SHA is not the current release-please pull request head.' >&2
-            exit 1
-          fi
+        run: >-
+          python3 acceptance/runner.py validate-request
+          --pull-request "$PR_NUMBER"
+          --release-sha "$RELEASE_SHA"
+          --repository "$REPOSITORY"
+          --workflow-ref "$WORKFLOW_REF"
+          --workflow-sha "$WORKFLOW_SHA"
+          --api-url "$GITHUB_API_URL"
 
   discover:
     name: Discover acceptance tests
@@ -177,71 +169,46 @@ jobs:
       pipeline-id-prefix: ${{ matrix.pipeline_id_prefix }}
       create-deployment: ${{ matrix.create_deployment }}
       expected-release-result: ${{ matrix.expected_release_result }}
-      notification-capture-function: ${{ matrix.notification_capture_function }}
       rebuild: ${{ matrix.rebuild }}
       release-pipeline-vars: ${{ matrix.release_pipeline_vars }}
     secrets: inherit
 
-  assert_suite:
-    name: Integration / acceptance suite result
-    if: always()
-    needs: [terraform, acceptance]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require every acceptance test
-        env:
-          TERRAFORM_RESULT: ${{ needs.terraform.result }}
-          ACCEPTANCE_RESULT: ${{ needs.acceptance.result }}
-        run: |
-          set -euo pipefail
-          test "$TERRAFORM_RESULT" = success
-          test "$ACCEPTANCE_RESULT" = success
-
   report:
     name: Report integration / acceptance suite result
     if: always()
-    needs: [validate_request, assert_suite]
+    needs: [validate_request, terraform, acceptance]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       issues: write
       statuses: write
     steps:
-      - name: Publish acceptance status
+      - name: Checkout trusted workflow source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Set up release tooling
+        uses: ./actions/setup
+
+      - name: Publish acceptance result
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ inputs.release-sha }}
           REPOSITORY: ${{ github.repository }}
           VALIDATION_RESULT: ${{ needs.validate_request.result }}
-          SUITE_RESULT: ${{ needs.assert_suite.result }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-
-          if [[ "$VALIDATION_RESULT" == success && "$SUITE_RESULT" == success ]]; then
-            state=success
-            description='Integration and acceptance tests passed.'
-          else
-            state=failure
-            description='Integration and acceptance tests failed.'
-          fi
-
-          for context in 'Integration / acceptance tests' 'release-gate'; do
-            gh api --method POST "repos/$REPOSITORY/statuses/$RELEASE_SHA" \
-              -f state="$state" \
-              -f context="$context" \
-              -f description="$description" \
-              -f target_url="$RUN_URL" >/dev/null
-          done
-
-      - name: Comment on the release pull request
-        env:
-          GH_TOKEN: ${{ github.token }}
+          TERRAFORM_RESULT: ${{ needs.terraform.result }}
+          ACCEPTANCE_RESULT: ${{ needs.acceptance.result }}
           PR_NUMBER: ${{ inputs.pull-request-number }}
-          REPOSITORY: ${{ github.repository }}
-          RESULT: ${{ needs.validate_request.result == 'success' && needs.assert_suite.result == 'success' && 'passed' || 'failed' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if ! gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f "body=Integration and acceptance tests $RESULT. $RUN_URL" >/dev/null; then
-            printf '%s\n' 'Integration status was published, but the PR comment could not be posted.' >&2
-          fi
+        run: >-
+          python3 acceptance/runner.py report
+          --pull-request "$PR_NUMBER"
+          --release-sha "$RELEASE_SHA"
+          --repository "$REPOSITORY"
+          --run-url "$RUN_URL"
+          --validation-result "$VALIDATION_RESULT"
+          --terraform-result "$TERRAFORM_RESULT"
+          --acceptance-result "$ACCEPTANCE_RESULT"
+          --api-url "$GITHUB_API_URL"

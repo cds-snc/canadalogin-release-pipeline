@@ -63,7 +63,6 @@ on:
 
 concurrency:
   group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
-  queue: max
 
 jobs:
   plan:
@@ -88,7 +87,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up release tooling
-        uses: $/actions/setup
+        uses: ./actions/setup
 
       - name: Validate configuration and plan jobs
         id: plan
@@ -134,7 +133,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up release tooling
-        uses: $/actions/setup
+        uses: ./actions/setup
 
       - name: Update deployment impact comment
         env:
@@ -184,7 +183,7 @@ jobs:
       contents: read
     steps:
       - name: Set up release tooling
-        uses: $/actions/setup
+        uses: ./actions/setup
 
       - name: Notify Slack
         env:
@@ -215,7 +214,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    uses: $/.github/workflows/build.yml
+    uses: ./.github/workflows/build.yml
     with:
       config-path: ${{ inputs.config-path }}
       aws-account-id: ${{ inputs.aws-account-id }}
@@ -253,7 +252,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.deployment_matrix) }}
-    uses: $/.github/workflows/deploy-environment.yml
+    uses: ./.github/workflows/deploy-environment.yml
     with:
       config-path: ${{ inputs.config-path }}
       aws-account-id: ${{ inputs.aws-account-id }}
@@ -309,6 +308,8 @@ jobs:
               release_result=failure
             fi
           done
-          printf 'release-result=%s\n' "$release_result" >> "$GITHUB_OUTPUT"
-          printf 'required-builds-result=%s\n' "$required_builds_result" >> "$GITHUB_OUTPUT"
-          printf 'deploy-result=%s\n' "$deploy_result" >> "$GITHUB_OUTPUT"
+          {
+            printf 'release-result=%s\n' "$release_result"
+            printf 'required-builds-result=%s\n' "$required_builds_result"
+            printf 'deploy-result=%s\n' "$deploy_result"
+          } >> "$GITHUB_OUTPUT"

@@ -16,6 +16,12 @@ from acceptance.catalog import (
     select_tests,
     validate_catalog,
 )
+from acceptance.github import (
+    GitHubError,
+    report_acceptance_result,
+    request_acceptance_tests,
+    validate_acceptance_request,
+)
 from acceptance.verify import run_verifier
 
 
@@ -53,6 +59,38 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser.add_argument(
         "--expected-result", default=os.environ.get("EXPECTED_RESULT", "success")
     )
+
+    request_parser = subparsers.add_parser(
+        "request", help="Validate a test command and dispatch the acceptance suite"
+    )
+    request_parser.add_argument("--comment-body", required=True)
+    request_parser.add_argument("--commenter", required=True)
+    request_parser.add_argument("--pull-request", required=True, type=int)
+    request_parser.add_argument("--repository", required=True)
+    request_parser.add_argument("--server-url", required=True)
+    request_parser.add_argument("--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com"))
+
+    request_validation_parser = subparsers.add_parser(
+        "validate-request", help="Validate a dispatched acceptance test request"
+    )
+    request_validation_parser.add_argument("--pull-request", required=True, type=int)
+    request_validation_parser.add_argument("--release-sha", required=True)
+    request_validation_parser.add_argument("--repository", required=True)
+    request_validation_parser.add_argument("--workflow-ref", required=True)
+    request_validation_parser.add_argument("--workflow-sha", required=True)
+    request_validation_parser.add_argument("--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com"))
+
+    report_parser = subparsers.add_parser(
+        "report", help="Publish the acceptance suite status and pull request comment"
+    )
+    report_parser.add_argument("--pull-request", required=True, type=int)
+    report_parser.add_argument("--release-sha", required=True)
+    report_parser.add_argument("--repository", required=True)
+    report_parser.add_argument("--run-url", required=True)
+    report_parser.add_argument("--validation-result", required=True)
+    report_parser.add_argument("--terraform-result", required=True)
+    report_parser.add_argument("--acceptance-result", required=True)
+    report_parser.add_argument("--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com"))
     return parser
 
 
@@ -99,7 +137,42 @@ def main(arguments: list[str] | None = None) -> int:
                 options.pipeline_result,
                 options.expected_result,
             )
-    except (CatalogError, OSError) as error:
+        if options.command == "request":
+            request_acceptance_tests(
+                comment_body=options.comment_body,
+                commenter=options.commenter,
+                pull_request=options.pull_request,
+                repository=options.repository,
+                server_url=options.server_url,
+                token=os.environ.get("GITHUB_TOKEN", ""),
+                api_url=options.api_url,
+            )
+            return 0
+        if options.command == "validate-request":
+            validate_acceptance_request(
+                pull_request=options.pull_request,
+                release_sha=options.release_sha,
+                repository=options.repository,
+                workflow_ref=options.workflow_ref,
+                workflow_sha=options.workflow_sha,
+                token=os.environ.get("GITHUB_TOKEN", ""),
+                api_url=options.api_url,
+            )
+            return 0
+        if options.command == "report":
+            report_acceptance_result(
+                pull_request=options.pull_request,
+                release_sha=options.release_sha,
+                repository=options.repository,
+                run_url=options.run_url,
+                validation_result=options.validation_result,
+                terraform_result=options.terraform_result,
+                acceptance_result=options.acceptance_result,
+                token=os.environ.get("GITHUB_TOKEN", ""),
+                api_url=options.api_url,
+            )
+            return 0
+    except (CatalogError, GitHubError, OSError) as error:
         parser.exit(2, f"error: {error}\n")
     return 1
 

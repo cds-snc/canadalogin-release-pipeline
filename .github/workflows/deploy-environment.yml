@@ -96,7 +96,6 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ inputs.environment }}
-      queue: max
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
       deployment: ${{ inputs.create-deployment }}
@@ -110,7 +109,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up release tooling
-        uses: $/actions/setup
+        uses: ./actions/setup
 
       - name: Resolve AWS roles
         id: resolve-roles

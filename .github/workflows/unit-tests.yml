@@ -19,7 +19,14 @@ jobs:
           persist-credentials: false
 
       - name: Set up release tooling
-        uses: $/actions/setup
+        uses: ./actions/setup
+
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+      - name: Lint GitHub Actions workflows
+        run: >-
+          "$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml
 
       - name: Compile Python package
         run: python -m compileall -q src
