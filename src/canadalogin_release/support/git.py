@@ -5,7 +5,7 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
-from .config import NOTIFICATION_WORKFLOW_SECRETS
+from ..config import NOTIFICATION_WORKFLOW_SECRETS
 
 
 class GitError(RuntimeError):

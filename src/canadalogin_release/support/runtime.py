@@ -1,3 +1,7 @@
+# This is a data class and helpers regarding the context of the deployment,
+# including the repository, environment, commit SHA, release tag, GitHub reference.
+# It also provides functions to resolve and render template values based on this context.
+
 from __future__ import annotations
 
 import json
@@ -8,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .config import ConfigError, ValueReference
+from ..config import ConfigError, ValueReference
 
 
 @dataclass(frozen=True)

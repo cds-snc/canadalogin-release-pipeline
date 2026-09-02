@@ -7,25 +7,25 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from .build import execute_build
-from .commands import CommandError, log
 from .config import ConfigError, PipelineConfig
-from .deploy import (
+from .integrations.github import promotions_from_json, sync_deployment_comment
+from .integrations.notifications import (
+    notify,
+    notify_pipeline_failure,
+    pipeline_failure_webhook_values,
+)
+from .pipeline.build import execute_build
+from .pipeline.deploy import (
     deploy_ecs,
     deploy_s3,
     preflight_ecs,
     preflight_s3,
 )
-from .github import promotions_from_json, sync_deployment_comment
-from .notifications import (
-    notify,
-    notify_pipeline_failure,
-    pipeline_failure_webhook_values,
-)
-from .planner import create_plan
-from .runtime import RuntimeContext, variables_from_environment
-from .validation import validate_repository
-from .versions import release_tag_for_sha
+from .pipeline.planner import create_plan
+from .pipeline.validation import validate_repository
+from .support.commands import CommandError, log
+from .support.runtime import RuntimeContext, variables_from_environment
+from .support.versions import release_tag_for_sha
 
 
 def build_parser() -> argparse.ArgumentParser:

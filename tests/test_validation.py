@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from canadalogin_release.config import ConfigError, PipelineConfig
-from canadalogin_release.validation import validate_repository
+from canadalogin_release.pipeline.validation import validate_repository
 
 CONFIG = """
 schema_version: 2

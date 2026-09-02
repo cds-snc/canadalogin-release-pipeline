@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from canadalogin_release.config import ConfigError, PipelineConfig
-from canadalogin_release.planner import create_plan
+from canadalogin_release.pipeline.planner import create_plan
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
 

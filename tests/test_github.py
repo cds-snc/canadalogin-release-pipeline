@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import unittest
 
-from canadalogin_release.github import (
+from canadalogin_release.integrations.github import (
     COMMENT_MARKER,
     render_deployment_comment,
     sync_deployment_comment,
 )
-from canadalogin_release.planner import Promotion
+from canadalogin_release.pipeline.planner import Promotion
 
 
 class FakeGitHub:

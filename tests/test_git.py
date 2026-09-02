@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from canadalogin_release.git import changed_paths, run_git
+from canadalogin_release.support.git import changed_paths, run_git
 
 
 class GitTest(unittest.TestCase):

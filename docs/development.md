@@ -22,6 +22,17 @@ release workflows. Regenerate it after modifying `requirements.in`:
 uv pip compile --generate-hashes --output-file requirements.lock requirements.in
 ```
 
+## Source layout
+
+`src/canadalogin_release/` keeps the command-line entry point (`cli.py`) and
+configuration model (`config.py`) at the package root. Implementation modules
+are grouped by responsibility:
+
+- `pipeline/` contains planning, validation, builds, and deployments.
+- `integrations/` contains GitHub and Slack notification clients.
+- `support/` contains command execution, Git access, runtime templating, and
+	version helpers.
+
 ## Unit tests
 
 ```sh

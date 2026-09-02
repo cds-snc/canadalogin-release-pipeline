@@ -1,10 +1,12 @@
+# General utilities for handling semantic versioning, SHA references, and Git tags.
+
 from __future__ import annotations
 
 import json
 import re
 from pathlib import Path
 
-from .config import ConfigError, PipelineConfig
+from ..config import ConfigError, PipelineConfig
 from .git import file_at_revision, run_git
 
 SEMVER_PATTERN = re.compile(
