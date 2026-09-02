@@ -47,7 +47,7 @@ class AcceptanceGitHubTests(unittest.TestCase):
         permission_url = f"{API_URL}/repos/{REPOSITORY}/collaborators/alice/permission"
         dispatch_url = (
             f"{API_URL}/repos/{REPOSITORY}/actions/workflows/"
-            "release-pipeline-tests.yml/dispatches"
+            "acceptance-tests.yml/dispatches"
         )
         recorder = RequestRecorder(
             {
@@ -77,7 +77,7 @@ class AcceptanceGitHubTests(unittest.TestCase):
                 "description": "Integration and acceptance tests are running.",
                 "target_url": (
                     "https://github.example/owner/repository/actions/workflows/"
-                    "release-pipeline-tests.yml"
+                    "acceptance-tests.yml"
                 ),
             },
         ))
@@ -95,7 +95,7 @@ class AcceptanceGitHubTests(unittest.TestCase):
         permission_url = f"{API_URL}/repos/{REPOSITORY}/collaborators/alice/permission"
         dispatch_url = (
             f"{API_URL}/repos/{REPOSITORY}/actions/workflows/"
-            "release-pipeline-tests.yml/dispatches"
+            "acceptance-tests.yml/dispatches"
         )
         recorder = RequestRecorder(
             {
@@ -123,7 +123,7 @@ class AcceptanceGitHubTests(unittest.TestCase):
             "description": "Integration and acceptance test dispatch failed.",
             "target_url": (
                 "https://github.example/owner/repository/actions/workflows/"
-                "release-pipeline-tests.yml"
+                "acceptance-tests.yml"
             ),
         })
 

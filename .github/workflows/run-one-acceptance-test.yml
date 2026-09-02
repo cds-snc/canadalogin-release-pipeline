@@ -1,4 +1,5 @@
-# Top-level workflow orchestrating the acceptance test process.
+# This workflow runs a single acceptance test based on the provided inputs.
+# It is called by `acceptance-tests.yml`.
 
 name: Acceptance test
 
