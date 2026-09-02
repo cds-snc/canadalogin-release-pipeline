@@ -16,12 +16,12 @@ infrastructure:
 
 verification:
   script: verify.py
-  aws_role: cl-acceptance-docker-build-failure-actions
+  aws_role: cl-acceptance-docker-failure-actions
   resources:
-    app_name: cl-acceptance-docker-build-failure
-    ecr_repository: cl-acceptance-docker-build-failure
-    cluster: cl-acceptance-docker-build-failure
-    service: cl-acceptance-docker-build-failure-app
-    ssm_parameter: /ecs/cl-acceptance-docker-build-failure/cl-acceptance-docker-build-failure-app/container-image
+    app_name: cl-acceptance-docker-failure
+    ecr_repository: cl-acceptance-docker-failure
+    cluster: cl-acceptance-docker-failure
+    service: cl-acceptance-docker-failure-app
+    ssm_parameter: /ecs/cl-acceptance-docker-failure/cl-acceptance-docker-failure-app/container-image
     notification_capture_function: enabled
-    notification_capture_table: cl-acceptance-docker-build-failure-notifications
+    notification_capture_table: cl-acceptance-docker-failure-notifications
