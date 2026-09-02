@@ -8,7 +8,7 @@ Each acceptance test lives under `acceptance/tests/<id>/`. Its `test.yml` manife
 
 ## Run from a release PR
 
-Comment exactly `!test` on the release-please pull request. The comment workflow accepts requests from users with `push`, `maintain`, or `admin` repository permission, then dispatches `release-pipeline-tests.yml` at the pull request head SHA. It publishes the `Integration / acceptance tests` status for that exact SHA; a later commit has no passing status and must be tested again.
+Comment exactly `!test` on the release-please pull request. The comment workflow accepts requests from users with `push`, `maintain`, or `admin` repository permission, then dispatches `acceptance-tests.yml` at the pull request head SHA. It publishes the `Integration / acceptance tests` status for that exact SHA; a later commit has no passing status and must be tested again.
 
 The suite applies the shared Terraform role first, then runs every enabled test package concurrently. Each package has its own Terraform state key and reconciles its own infrastructure before calling the release workflow. It does not destroy resources or clean artifacts after the run, so ECR, ECS, S3, logs, and workflow state remain available for inspection. State is cleaned before each run.
 

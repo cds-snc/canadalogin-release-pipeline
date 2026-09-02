@@ -79,7 +79,7 @@ class WorkflowContractTest(unittest.TestCase):
             pipeline,
         )
         acceptance_test = (
-            ROOT / ".github" / "workflows" / "acceptance-test.yml"
+            ROOT / ".github" / "workflows" / "run-one-acceptance-test.yml"
         ).read_text()
         self.assertFalse(
             (ROOT / ".github" / "workflows" / "acceptance-release.yml").exists()
@@ -215,7 +215,7 @@ class WorkflowContractTest(unittest.TestCase):
         self,
     ) -> None:
         acceptance_test = (
-            ROOT / ".github" / "workflows" / "acceptance-test.yml"
+            ROOT / ".github" / "workflows" / "run-one-acceptance-test.yml"
         ).read_text()
         pipeline = (
             ROOT / ".github" / "workflows" / "internal-release-system-interface.yml"
@@ -241,7 +241,7 @@ class WorkflowContractTest(unittest.TestCase):
             ROOT / ".github" / "workflows" / "release-pipeline-test-command.yml"
         ).read_text()
         suite = (
-            ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
+            ROOT / ".github" / "workflows" / "acceptance-tests.yml"
         ).read_text()
 
         self.assertIn("uses: ./actions/setup", command)
