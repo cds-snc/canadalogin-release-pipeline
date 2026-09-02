@@ -12,7 +12,7 @@ Comment exactly `!test` on the release-please pull request. The comment workflow
 
 The suite applies the shared Terraform role first, then runs every enabled test package concurrently. Each package has its own Terraform state key and reconciles its own infrastructure before calling the release workflow. It does not destroy resources or clean artifacts after the run, so ECR, ECS, S3, logs, and workflow state remain available for inspection. State is cleaned before each run.
 
-The repository unit tests also exercise the normalized configuration shape of all five client examples, push planning for every configured environment, and multi-service ECS deployment behavior. The live suite covers the standard ECS, combined React and ECS, and test-owned expected-failure paths.
+The repository unit tests also exercise the normalized configuration shape of all five client examples, push planning for every configured environment, and multi-service ECS deployment behavior. The live suite covers standard ECS, combined React and ECS, a failing build that prevents deployment, and an ECS health-check failure. Failure fixtures direct alert posts to test-owned Lambda recorders, which their verifiers inspect instead of sending messages to real Slack channels.
 
 ## Test isolation
 

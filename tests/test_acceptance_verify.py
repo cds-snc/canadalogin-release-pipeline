@@ -7,10 +7,20 @@ from acceptance.support.verify import VerificationContext, verify_react_site
 
 class AcceptanceVerificationTests(unittest.TestCase):
     def test_context_reads_acceptance_environment(self) -> None:
-        with patch.dict(os.environ, {"ACCEPTANCE_ENVIRONMENT": "dev"}, clear=True):
+        with patch.dict(
+            os.environ,
+            {
+                "ACCEPTANCE_ENVIRONMENT": "dev",
+                "REQUIRED_BUILDS_RESULT": "failure",
+                "DEPLOY_RESULT": "skipped",
+            },
+            clear=True,
+        ):
             context = VerificationContext.from_environment()
 
         self.assertEqual(context.environment, "dev")
+        self.assertEqual(context.required_builds_result, "failure")
+        self.assertEqual(context.deploy_result, "skipped")
 
     @patch("acceptance.support.verify.command", return_value="a" * 40)
     @patch(

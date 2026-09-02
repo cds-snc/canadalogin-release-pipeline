@@ -4,6 +4,6 @@ profile: ecs-service
 environments: [dev]
 
 backend:
-  dockerfile: acceptance/tests/failure-ecs/app/Dockerfile
+  dockerfile: acceptance/tests/docker-build-failure/app/Dockerfile
   build_args:
     APP_VERSION: "{release_version}"

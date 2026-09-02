@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from canadalogin_release.config import PipelineConfig
 from canadalogin_release.notifications import (
+    alert_webhook_values,
     default_alert_webhook_values,
     default_info_webhook_values,
     notify,
@@ -20,6 +21,17 @@ EXAMPLES = Path(__file__).parents[1] / "examples"
 
 
 class NotificationTest(unittest.TestCase):
+    def test_alert_webhook_override_takes_precedence_over_secret_slots(self) -> None:
+        self.assertEqual(
+            alert_webhook_values(
+                {
+                    "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_OVERRIDE": "https://capture.example/test",
+                    "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1": "https://hooks.example/one",
+                }
+            ),
+            ("https://capture.example/test",),
+        )
+
     def test_schema_two_defaults_use_numbered_alert_slots(self) -> None:
         config = PipelineConfig.load(
             EXAMPLES

@@ -87,6 +87,11 @@ on:
         required: false
         default: ""
         type: string
+      alert-webhook-override:
+        description: Optional endpoint used instead of configured alert Slack webhooks.
+        required: false
+        default: ""
+        type: string
 
 jobs:
   build:
@@ -186,6 +191,7 @@ jobs:
           RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_3: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_3 }}
           RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_4: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_4 }}
           RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_5: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_5 }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_OVERRIDE: ${{ inputs.alert-webhook-override }}
         run: >-
           canadalogin-release notify
           --status build-failure
@@ -268,6 +274,7 @@ jobs:
           RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_3: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_3 }}
           RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_4: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_4 }}
           RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_5: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_5 }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_OVERRIDE: ${{ inputs.alert-webhook-override }}
         run: >-
           canadalogin-release notify
           --status build-failure
