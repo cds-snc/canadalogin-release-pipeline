@@ -78,9 +78,17 @@ class WorkflowContractTest(unittest.TestCase):
             "group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-",
             pipeline,
         )
-        self.assertIn("pipeline_id: ${{ inputs.pipeline-id }}", (
-            ROOT / ".github" / "workflows" / "acceptance-release.yml"
-        ).read_text())
+        acceptance_test = (
+            ROOT / ".github" / "workflows" / "acceptance-test.yml"
+        ).read_text()
+        self.assertFalse(
+            (ROOT / ".github" / "workflows" / "acceptance-release.yml").exists()
+        )
+        self.assertIn(
+            "uses: ./.github/workflows/internal-release-system-interface.yml",
+            acceptance_test,
+        )
+        self.assertIn("pipeline_id: ${{ inputs.pipeline-id-prefix }}-${{ github.run_id }}", acceptance_test)
         self.assertIn(
             "aws-region: ${{ inputs.aws-region || matrix.aws_region }}", pipeline
         )
@@ -150,6 +158,15 @@ class WorkflowContractTest(unittest.TestCase):
                         workflow.count("persist-credentials: false"), checkout_count
                     )
 
+    def test_workflows_use_actionlint_supported_environment_syntax(self) -> None:
+        for path in self.workflow_files():
+            if path.suffix == ".yml":
+                with self.subTest(path=path.name):
+                    workflow = path.read_text()
+                    self.assertNotIn("deployment:", workflow)
+                    self.assertNotIn("&deployment-environment", workflow)
+                    self.assertNotIn("*deployment-environment", workflow)
+
     def test_only_sbom_build_workflow_has_snapshot_write_permission(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
 
@@ -159,6 +176,14 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn(
             "permissions:\n      contents: write\n      id-token: write", workflow
         )
+
+    def test_unit_tests_lint_workflows(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "unit-tests.yml").read_text()
+
+        self.assertIn(
+            "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7", workflow
+        )
+        self.assertIn('"$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml', workflow)
 
     def test_release_please_is_standalone_and_uses_version_manifest(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
@@ -192,9 +217,6 @@ class WorkflowContractTest(unittest.TestCase):
         acceptance_test = (
             ROOT / ".github" / "workflows" / "acceptance-test.yml"
         ).read_text()
-        acceptance_release = (
-            ROOT / ".github" / "workflows" / "acceptance-release.yml"
-        ).read_text()
         pipeline = (
             ROOT / ".github" / "workflows" / "internal-release-system-interface.yml"
         ).read_text()
@@ -208,12 +230,28 @@ class WorkflowContractTest(unittest.TestCase):
         )[0]
         self.assertNotIn("continue-on-error", release)
         self.assertIn("allow-failure: ${{ inputs.expected-release-result == 'failure' }}", release)
-        self.assertIn("allow-failure:", acceptance_release)
-        self.assertIn("allow-failure: ${{ inputs.allow-failure }}", pipeline)
+        self.assertIn("allow-failure:", pipeline)
         self.assertIn("continue-on-error: ${{ inputs.allow-failure }}", build)
         self.assertIn("continue-on-error: ${{ inputs.allow-failure }}", deployment)
         self.assertIn("needs.required_builds.outputs.result", pipeline)
         self.assertIn("needs.deploy.outputs.result", pipeline)
+
+    def test_acceptance_github_orchestration_uses_python_commands(self) -> None:
+        command = (
+            ROOT / ".github" / "workflows" / "release-pipeline-test-command.yml"
+        ).read_text()
+        suite = (
+            ROOT / ".github" / "workflows" / "release-pipeline-tests.yml"
+        ).read_text()
+
+        self.assertIn("uses: ./actions/setup", command)
+        self.assertIn("acceptance/runner.py request", command)
+        self.assertNotIn("gh api", command)
+        self.assertNotIn("jq ", command)
+        self.assertIn("acceptance/runner.py validate-request", suite)
+        self.assertIn("acceptance/runner.py report", suite)
+        self.assertNotIn("assert_suite:", suite)
+        self.assertIn("needs: [validate_request, terraform, acceptance]", suite)
 
 if __name__ == "__main__":
     unittest.main()

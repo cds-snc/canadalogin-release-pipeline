@@ -16,6 +16,15 @@ jobs:
     if: ${{ github.event.issue.pull_request }}
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout workflow source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up release tooling
+        uses: ./actions/setup
+
       - name: Validate request and dispatch prospective SHA
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -23,76 +32,12 @@ jobs:
           PR_NUMBER: ${{ github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
           SERVER_URL: ${{ github.server_url }}
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ "$COMMENT_BODY" != "!test" ]]; then
-            exit 0
-          fi
-
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
-          head_repository="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
-          head_ref="$(jq -r '.head.ref // ""' <<<"$pr_json")"
-          head_sha="$(jq -r '.head.sha // ""' <<<"$pr_json")"
-          base_branch="$(jq -r '.base.ref // ""' <<<"$pr_json")"
-          pr_state="$(jq -r '.state // ""' <<<"$pr_json")"
-          author_type="$(jq -r '.user.type // ""' <<<"$pr_json")"
-          release_label="$(jq -r '[.labels[]?.name] | index("autorelease: pending") // empty' <<<"$pr_json")"
-
-          if [[ "$head_repository" != "$REPOSITORY" ]]; then
-            printf '%s\n' 'Acceptance tests only run for branches in the release repository.' >&2
-            exit 1
-          fi
-          if [[ "$base_branch" != "main" || "$pr_state" != "open" || -z "$head_ref" || -z "$head_sha" ]]; then
-            printf '%s\n' 'Acceptance tests require an open pull request targeting main.' >&2
-            exit 1
-          fi
-          if [[ "$head_ref" != "release-please--branches--main" || "$author_type" != "Bot" || -z "$release_label" ]]; then
-            printf '%s\n' 'Acceptance tests only run for release-please pull requests.' >&2
-            exit 1
-          fi
-
-          permission="$(gh api "repos/$REPOSITORY/collaborators/$COMMENTER/permission" --jq '.permission' 2>/dev/null || printf '%s' none)"
-          case "$permission" in
-            admin|maintain|push|write)
-              ;;
-            *)
-              printf 'Commenter %s does not have permission to request acceptance tests.\n' "$COMMENTER" >&2
-              exit 1
-              ;;
-          esac
-
-          workflow_url="$SERVER_URL/$REPOSITORY/actions/workflows/release-pipeline-tests.yml"
-          if ! gh api --method POST "repos/$REPOSITORY/statuses/$head_sha" \
-            -f state=pending \
-            -f context='Integration / acceptance tests' \
-            -f description='Integration and acceptance tests are running.' \
-            -f target_url="$workflow_url" >/dev/null; then
-            printf '%s\n' 'Could not publish the pending acceptance status.' >&2
-            exit 1
-          fi
-
-          payload="$(jq -cn \
-            --arg ref "$head_ref" \
-            --arg sha "$head_sha" \
-            --arg pr "$PR_NUMBER" \
-            '{ref:$ref,inputs:{"release-sha":$sha,"pull-request-number":$pr}}')"
-          if ! gh api --method POST \
-            "repos/$REPOSITORY/actions/workflows/release-pipeline-tests.yml/dispatches" \
-            -H 'Content-Type: application/json' \
-            --input - <<<"$payload" >/dev/null; then
-            gh api --method POST "repos/$REPOSITORY/statuses/$head_sha" \
-              -f state=failure \
-              -f context='Integration / acceptance tests' \
-              -f description='Integration and acceptance test dispatch failed.' \
-              -f target_url="$workflow_url" >/dev/null || true
-            exit 1
-          fi
-
-          if ! gh api --method POST \
-            "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
-            -f "body=Integration and acceptance tests dispatched for $head_sha. $workflow_url" >/dev/null; then
-            printf '%s\n' 'Integration tests were dispatched, but the PR comment could not be posted.' >&2
-          fi
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python3 acceptance/runner.py request
+          --comment-body "$COMMENT_BODY"
+          --commenter "$COMMENTER"
+          --pull-request "$PR_NUMBER"
+          --repository "$REPOSITORY"
+          --server-url "$SERVER_URL"
+          --api-url "$GITHUB_API_URL"

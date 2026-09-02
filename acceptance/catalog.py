@@ -52,7 +52,6 @@ class AcceptanceTest:
             "aws_account_id": release_account_id,
             "aws_region": release_region,
             "pipeline_id_prefix": self.release["pipeline_id_prefix"],
-            "create_deployment": self.release["create_deployment"],
             "expected_release_result": self.release["expected_release_result"],
             "notification_capture_function": self.resources.get(
                 "notification_capture_function", ""
@@ -189,7 +188,6 @@ def _load_manifest(manifest_path: Path) -> AcceptanceTest:
             "environment",
             "github_environment",
             "pipeline_id_prefix",
-            "create_deployment",
             "expected_release_result",
             "rebuild",
             "aws_account_id",
@@ -216,26 +214,12 @@ def _load_manifest(manifest_path: Path) -> AcceptanceTest:
         raise CatalogError(
             f"{manifest_path}.release.pipeline_id_prefix is not a slug: {pipeline_id_prefix}"
         )
-    release["create_deployment"] = _boolean(
-        release.get("create_deployment"),
-        f"{manifest_path}.release.create_deployment",
-        default=False,
-    )
     expected_release_result = release.get("expected_release_result", "success")
     if expected_release_result not in {"success", "failure"}:
         raise CatalogError(
             f"{manifest_path}.release.expected_release_result must be success or failure"
         )
     release["expected_release_result"] = expected_release_result
-    if (
-        expected_release_result == "failure"
-        and "notification_capture_table" not in _mapping(
-            manifest.get("verification"), f"{manifest_path}.verification"
-        ).get("resources", {})
-    ):
-        raise CatalogError(
-            f"{manifest_path}.verification.resources must include notification_capture_table for expected failures"
-        )
     release["rebuild"] = _boolean(
         release.get("rebuild"), f"{manifest_path}.release.rebuild", default=True
     )
@@ -308,6 +292,17 @@ def _load_manifest(manifest_path: Path) -> AcceptanceTest:
         raise CatalogError(
             f"{manifest_path}.verification.resources is missing: {', '.join(missing_resources)}"
         )
+    if expected_release_result == "failure":
+        required_failure_resources = {
+            "notification_capture_function",
+            "notification_capture_table",
+        }
+        missing_failure_resources = sorted(required_failure_resources - set(resources))
+        if missing_failure_resources:
+            raise CatalogError(
+                f"{manifest_path}.verification.resources is missing for an expected failure: "
+                f"{', '.join(missing_failure_resources)}"
+            )
 
     return AcceptanceTest(
         test_id=test_id,
