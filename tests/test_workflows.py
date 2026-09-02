@@ -188,7 +188,7 @@ class WorkflowContractTest(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "unit-tests.yml").read_text()
 
         self.assertIn(
-            "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7", workflow
+            "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12", workflow
         )
         self.assertIn('"$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml', workflow)
 
