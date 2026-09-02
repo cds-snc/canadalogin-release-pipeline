@@ -185,6 +185,18 @@ class WorkflowContractTest(unittest.TestCase):
         )
         self.assertIn('"$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml', workflow)
 
+    def test_unit_tests_validate_acceptance_terraform(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "unit-tests.yml").read_text()
+
+        self.assertIn("hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e", workflow)
+        self.assertIn("terraform_version: 1.9.4", workflow)
+        self.assertIn("Validate acceptance Terraform", workflow)
+        self.assertIn(
+            "acceptance/terraform acceptance/tests/*/infra", workflow
+        )
+        self.assertIn("init -backend=false -input=false -lockfile=readonly", workflow)
+        self.assertIn("validate -no-color", workflow)
+
     def test_release_please_is_standalone_and_uses_version_manifest(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
         config = json.loads((ROOT / "release-please-config.json").read_text())
