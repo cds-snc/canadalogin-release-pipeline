@@ -38,7 +38,7 @@ data "aws_iam_policy_document" "terraform" {
   statement {
     sid       = "AcceptanceInfrastructure"
     effect    = "Allow"
-    actions   = ["ec2:*", "ecs:*", "ecr:*", "elasticloadbalancing:*", "logs:*"]
+    actions   = ["ec2:*", "ecs:*", "ecr:*", "elasticloadbalancing:*", "lambda:*", "logs:*"]
     resources = ["*"]
   }
 
