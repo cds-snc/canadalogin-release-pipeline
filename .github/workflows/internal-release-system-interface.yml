@@ -83,15 +83,21 @@ jobs:
           RELEASE_FORCE_REDEPLOY: ${{ inputs.force-redeploy }}
           RELEASE_REBUILD: ${{ inputs.rebuild }}
           REPOSITORY_DISPATCH_EVENT: ${{ github.event.action || '' }}
-        run: >-
-          canadalogin-release plan
-          --config "$CONFIG_PATH"
-          --event-name "$GITHUB_EVENT_NAME"
-          --sha "$PLAN_SHA"
-          --before-sha "$BEFORE_SHA"
-          --environment "$MANUAL_ENVIRONMENT"
-          --repository-dispatch-event "$REPOSITORY_DISPATCH_EVENT"
-          --github-output
+        run: |
+          plan="$(canadalogin-release plan \
+            --config "$CONFIG_PATH" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --sha "$PLAN_SHA" \
+            --before-sha "$BEFORE_SHA" \
+            --environment "$MANUAL_ENVIRONMENT" \
+            --repository-dispatch-event "$REPOSITORY_DISPATCH_EVENT" \
+            --github-output)"
+
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$plan" >> "$GITHUB_OUTPUT"
+          printf 'Required builds:\n'
+          jq -r '.required_build_matrix | fromjson' <<< "$plan"
+          printf '\nDeployments:\n'
+          jq -r '.deployment_matrix | fromjson' <<< "$plan"
 
   deployment-impact:
     name: Comment on deployment impact
