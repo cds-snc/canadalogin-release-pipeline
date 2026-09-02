@@ -158,6 +158,15 @@ class WorkflowContractTest(unittest.TestCase):
                         workflow.count("persist-credentials: false"), checkout_count
                     )
 
+    def test_workflows_use_actionlint_supported_environment_syntax(self) -> None:
+        for path in self.workflow_files():
+            if path.suffix == ".yml":
+                with self.subTest(path=path.name):
+                    workflow = path.read_text()
+                    self.assertNotIn("deployment:", workflow)
+                    self.assertNotIn("&deployment-environment", workflow)
+                    self.assertNotIn("*deployment-environment", workflow)
+
     def test_only_sbom_build_workflow_has_snapshot_write_permission(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
 

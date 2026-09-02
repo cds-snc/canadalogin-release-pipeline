@@ -8,7 +8,6 @@ release:
   environment: dev
   github_environment: acceptance-tests
   pipeline_id_prefix: acceptance-standard
-  create_deployment: false
   rebuild: true
 
 infrastructure:

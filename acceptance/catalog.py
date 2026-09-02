@@ -52,7 +52,6 @@ class AcceptanceTest:
             "aws_account_id": release_account_id,
             "aws_region": release_region,
             "pipeline_id_prefix": self.release["pipeline_id_prefix"],
-            "create_deployment": self.release["create_deployment"],
             "expected_release_result": self.release["expected_release_result"],
             "notification_capture_function": self.resources.get(
                 "notification_capture_function", ""
@@ -189,7 +188,6 @@ def _load_manifest(manifest_path: Path) -> AcceptanceTest:
             "environment",
             "github_environment",
             "pipeline_id_prefix",
-            "create_deployment",
             "expected_release_result",
             "rebuild",
             "aws_account_id",
@@ -216,11 +214,6 @@ def _load_manifest(manifest_path: Path) -> AcceptanceTest:
         raise CatalogError(
             f"{manifest_path}.release.pipeline_id_prefix is not a slug: {pipeline_id_prefix}"
         )
-    release["create_deployment"] = _boolean(
-        release.get("create_deployment"),
-        f"{manifest_path}.release.create_deployment",
-        default=False,
-    )
     expected_release_result = release.get("expected_release_result", "success")
     if expected_release_result not in {"success", "failure"}:
         raise CatalogError(

@@ -45,10 +45,6 @@ on:
         description: Prefix for this test's release pipeline concurrency namespace.
         required: true
         type: string
-      create-deployment:
-        description: Create a GitHub deployment record for the test environment.
-        required: true
-        type: boolean
       expected-release-result:
         description: Expected conclusion of the release pipeline.
         required: true
@@ -78,7 +74,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.github-environment }}
-      deployment: false
     permissions:
       contents: read
       id-token: write
@@ -161,7 +156,6 @@ jobs:
       pipeline_id: ${{ inputs.pipeline-id-prefix }}-${{ github.run_id }}
       environment: ${{ inputs.environment }}
       github-environment: ${{ inputs.github-environment }}
-      create-deployment: ${{ inputs.create-deployment }}
       rebuild: ${{ inputs.rebuild }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
       alert-webhook-override: ${{ needs.infrastructure.outputs.alert-webhook-override }}
@@ -175,7 +169,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.github-environment }}
-      deployment: false
     permissions:
       actions: read
       contents: read

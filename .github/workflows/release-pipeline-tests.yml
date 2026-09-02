@@ -92,7 +92,6 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: acceptance-tests
-      deployment: false
     steps:
       - name: Checkout prospective release
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -167,7 +166,6 @@ jobs:
       aws-account-id: ${{ matrix.aws_account_id }}
       aws-region: ${{ matrix.aws_region }}
       pipeline-id-prefix: ${{ matrix.pipeline_id_prefix }}
-      create-deployment: ${{ matrix.create_deployment }}
       expected-release-result: ${{ matrix.expected_release_result }}
       rebuild: ${{ matrix.rebuild }}
       release-pipeline-vars: ${{ matrix.release_pipeline_vars }}

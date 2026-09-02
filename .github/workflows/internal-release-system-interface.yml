@@ -28,10 +28,6 @@ on:
         required: false
         default: ""
         type: string
-      create-deployment:
-        required: false
-        default: true
-        type: boolean
       pipeline_id:
         required: false
         default: default
@@ -258,7 +254,6 @@ jobs:
       aws-account-id: ${{ inputs.aws-account-id }}
       aws-region: ${{ inputs.aws-region || matrix.aws_region }}
       github-environment: ${{ inputs.github-environment || matrix.environment }}
-      create-deployment: ${{ inputs.create-deployment }}
       pipeline_id: ${{ inputs.pipeline_id }}
       enabled: ${{ matrix.enabled }}
       environment: ${{ matrix.environment }}
