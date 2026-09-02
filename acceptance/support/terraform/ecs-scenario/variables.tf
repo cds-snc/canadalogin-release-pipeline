@@ -8,6 +8,11 @@ variable "aws_region" {
 
 variable "app_name" {
   type = string
+
+  validation {
+    condition     = length(var.app_name) <= 28
+    error_message = "app_name must be at most 28 characters so generated security group names do not exceed AWS's 32-character limit."
+  }
 }
 
 variable "environment" {
