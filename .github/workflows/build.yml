@@ -92,6 +92,15 @@ on:
         required: false
         default: ""
         type: string
+      allow-failure:
+        description: Allow a build failure while reporting it to the caller.
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      result:
+        description: Actual build result.
+        value: ${{ jobs.build.outputs.result }}
 
 jobs:
   build:
@@ -103,6 +112,7 @@ jobs:
       id-token: write
     outputs:
       image_uri: ${{ steps.build.outputs.image_uri }}
+      result: ${{ steps.result.outputs.result }}
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
       deployment: false
@@ -160,6 +170,7 @@ jobs:
 
       - name: Build and publish artifact
         id: build
+        continue-on-error: ${{ inputs.allow-failure }}
         env:
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ inputs.aws-region }}
@@ -177,8 +188,13 @@ jobs:
           --github-ref "$GITHUB_REF"
           --github-output
 
+      - name: Record build result
+        if: always()
+        id: result
+        run: printf 'result=%s\n' "${{ steps.build.outcome }}" >> "$GITHUB_OUTPUT"
+
       - name: Notify Slack about build failure
-        if: failure() && inputs.notify-failure
+        if: (failure() || steps.build.outcome == 'failure') && inputs.notify-failure
         env:
           BUILD_ENVIRONMENT: ${{ inputs.target-environment }}
           BUILD_NAME: ${{ inputs.name }}

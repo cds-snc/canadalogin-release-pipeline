@@ -1,3 +1,7 @@
+# The equivalent of release-system.yml, but with extra inputs exposed
+# for acceptance testing. Besides the additional inputs, it hits the
+# same underlying workflow.
+
 name: Acceptance release pipeline
 
 on:
@@ -53,6 +57,10 @@ on:
         description: Optional isolated endpoint used to capture failure alerts.
         required: true
         type: string
+      allow-failure:
+        description: Allow an acceptance fixture's intended release failure.
+        required: true
+        type: boolean
 
 jobs:
   release:
@@ -68,4 +76,5 @@ jobs:
       rebuild: ${{ inputs.rebuild }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
       alert-webhook-override: ${{ inputs.alert-webhook-override }}
+      allow-failure: ${{ inputs.allow-failure }}
     secrets: inherit
