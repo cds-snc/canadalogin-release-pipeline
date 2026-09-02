@@ -93,6 +93,7 @@ jobs:
       group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ inputs.environment }}
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
+      deployment: ${{ inputs.github-environment != 'acceptance-tests' }}
     outputs:
       result: ${{ steps.result.outputs.result }}
     steps:

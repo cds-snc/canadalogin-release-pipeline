@@ -75,6 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.github-environment }}
+      deployment: false
     permissions:
       contents: read
       id-token: write
@@ -170,6 +171,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.github-environment }}
+      deployment: false
     permissions:
       actions: read
       contents: read
