@@ -1,3 +1,5 @@
+# This workflow blocks release-please pull requests if the acceptance tests have not yet passed.
+
 name: PR mergeability check
 
 on:

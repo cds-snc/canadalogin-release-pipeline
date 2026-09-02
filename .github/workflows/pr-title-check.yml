@@ -1,3 +1,5 @@
+# This workflow validates that PR titles follow conventional commit format.
+
 name: PR Title Check
 
 on:

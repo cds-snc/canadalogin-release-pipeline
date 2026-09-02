@@ -1,3 +1,6 @@
+# Deploy one component to an environment according to the inputs.
+# This workflow is called by `release-pipeline.yml`.
+
 name: Deploy release environment
 
 on:

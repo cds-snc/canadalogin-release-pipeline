@@ -1,4 +1,5 @@
-# The top-level orchestration workflow for acceptance tests. 
+# The top-level orchestration workflow for acceptance tests. This gets
+# kicked off by release-pipeline-test-command.yml.
 
 name: Integration / acceptance tests
 

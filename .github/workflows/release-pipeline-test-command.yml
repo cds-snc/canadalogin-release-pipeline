@@ -1,3 +1,5 @@
+# This workflow listens for !test comments and dispatches the acceptance-tests workflow.
+
 name: Request integration and acceptance tests
 
 on:

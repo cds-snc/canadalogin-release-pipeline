@@ -1,3 +1,6 @@
+# Build one release artifact according to the inputs.
+# This workflow is called by `release-pipeline.yml`.
+
 name: Build release artifact
 
 on:

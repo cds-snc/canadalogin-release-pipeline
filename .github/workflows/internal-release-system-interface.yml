@@ -1,3 +1,8 @@
+# This is the underlying workflow for the CanadaLogin release system.
+# This provides GitHub Actions features like concurrency, matrix build fanout,
+# job dependency and more. The bulk of the logic is implemented in src/.
+# It is called by `release-pipeline.yml`.
+
 name: CanadaLogin internal release system interface
 
 on:
