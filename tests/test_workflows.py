@@ -31,7 +31,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertEqual(failures, [])
 
     def test_unit_test_check_has_an_explicit_user_facing_name(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+        workflow = (ROOT / ".github" / "workflows" / "unit-tests.yml").read_text()
 
         self.assertIn("name: Unit tests\n", workflow)
         self.assertIn("  test:\n    name: Unit tests", workflow)
@@ -185,6 +185,35 @@ class WorkflowContractTest(unittest.TestCase):
                 }
             ],
         )
+
+    def test_acceptance_failure_fixtures_do_not_tolerate_reusable_job_failures(
+        self,
+    ) -> None:
+        acceptance_test = (
+            ROOT / ".github" / "workflows" / "acceptance-test.yml"
+        ).read_text()
+        acceptance_release = (
+            ROOT / ".github" / "workflows" / "acceptance-release.yml"
+        ).read_text()
+        pipeline = (
+            ROOT / ".github" / "workflows" / "internal-release-system-interface.yml"
+        ).read_text()
+        build = (ROOT / ".github" / "workflows" / "build.yml").read_text()
+        deployment = (
+            ROOT / ".github" / "workflows" / "deploy-environment.yml"
+        ).read_text()
+
+        release = acceptance_test.split("\n  release:\n", 1)[1].split(
+            "\n  verify:\n", 1
+        )[0]
+        self.assertNotIn("continue-on-error", release)
+        self.assertIn("allow-failure: ${{ inputs.expected-release-result == 'failure' }}", release)
+        self.assertIn("allow-failure:", acceptance_release)
+        self.assertIn("allow-failure: ${{ inputs.allow-failure }}", pipeline)
+        self.assertIn("continue-on-error: ${{ inputs.allow-failure }}", build)
+        self.assertIn("continue-on-error: ${{ inputs.allow-failure }}", deployment)
+        self.assertIn("needs.required_builds.outputs.result", pipeline)
+        self.assertIn("needs.deploy.outputs.result", pipeline)
 
 if __name__ == "__main__":
     unittest.main()

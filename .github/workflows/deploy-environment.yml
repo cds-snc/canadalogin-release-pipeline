@@ -75,6 +75,15 @@ on:
         required: false
         default: ""
         type: string
+      allow-failure:
+        description: Allow an ECS deployment failure while reporting it to the caller.
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      result:
+        description: Actual deployment result.
+        value: ${{ jobs.deploy.outputs.result }}
 
 permissions:
   contents: read
@@ -91,6 +100,8 @@ jobs:
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
       deployment: ${{ inputs.create-deployment }}
+    outputs:
+      result: ${{ steps.result.outputs.result }}
     steps:
       - name: Checkout caller repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -217,12 +228,19 @@ jobs:
 
       - name: Deploy ECS services
         if: inputs.ecs-role != ''
+        id: deploy-ecs
+        continue-on-error: ${{ inputs.allow-failure }}
         env: *deployment-environment
         run: >-
           canadalogin-release deploy-ecs
           --config "$CONFIG_PATH"
           --environment "$DEPLOY_ENVIRONMENT"
           --sha "${{ inputs.sha }}"
+
+      - name: Record deployment result
+        if: always()
+        id: result
+        run: printf 'result=%s\n' "${{ steps.deploy-ecs.outcome || 'success' }}" >> "$GITHUB_OUTPUT"
 
       - name: Notify Slack about deployment success
         if: inputs.notify
@@ -246,7 +264,7 @@ jobs:
           --workflow-url "$WORKFLOW_URL"
 
       - name: Notify Slack about deployment failure
-        if: failure() && inputs.notify-failure
+        if: (failure() || steps.deploy-ecs.outcome == 'failure') && inputs.notify-failure
         env:
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}

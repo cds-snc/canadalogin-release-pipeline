@@ -56,6 +56,10 @@ on:
         required: false
         default: ""
         type: string
+      allow-failure:
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
@@ -232,6 +236,7 @@ jobs:
       sbom-dockerfile: ${{ matrix.sbom_dockerfile }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
       alert-webhook-override: ${{ inputs.alert-webhook-override }}
+      allow-failure: ${{ inputs.allow-failure }}
     secrets: inherit
 
   deploy:
@@ -242,7 +247,8 @@ jobs:
         always() &&
         needs.plan.result == 'success' &&
         (needs.release_please.result == 'success' || needs.release_please.result == 'skipped') &&
-        (needs.required_builds.result == 'success' || needs.required_builds.result == 'skipped')
+        (needs.required_builds.result == 'success' || needs.required_builds.result == 'skipped') &&
+        (needs.required_builds.outputs.result == 'success' || needs.required_builds.outputs.result == '')
       }}
     strategy:
       fail-fast: false
@@ -264,6 +270,7 @@ jobs:
       notify-failure: ${{ matrix.notify_failure }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
       alert-webhook-override: ${{ inputs.alert-webhook-override }}
+      allow-failure: ${{ inputs.allow-failure }}
     secrets: inherit
 
   release_result:
@@ -282,16 +289,26 @@ jobs:
         env:
           PLAN_RESULT: ${{ needs.plan.result }}
           RELEASE_PLEASE_RESULT: ${{ needs.release_please.result }}
-          REQUIRED_BUILDS_RESULT: ${{ needs.required_builds.result }}
-          DEPLOY_RESULT: ${{ needs.deploy.result }}
+          REQUIRED_BUILDS_JOB_RESULT: ${{ needs.required_builds.result }}
+          REQUIRED_BUILDS_REPORTED_RESULT: ${{ needs.required_builds.outputs.result }}
+          DEPLOY_JOB_RESULT: ${{ needs.deploy.result }}
+          DEPLOY_REPORTED_RESULT: ${{ needs.deploy.outputs.result }}
         run: |
           set -euo pipefail
+          required_builds_result="$REQUIRED_BUILDS_JOB_RESULT"
+          if [[ "$required_builds_result" == success && -n "$REQUIRED_BUILDS_REPORTED_RESULT" ]]; then
+            required_builds_result="$REQUIRED_BUILDS_REPORTED_RESULT"
+          fi
+          deploy_result="$DEPLOY_JOB_RESULT"
+          if [[ "$deploy_result" == success && -n "$DEPLOY_REPORTED_RESULT" ]]; then
+            deploy_result="$DEPLOY_REPORTED_RESULT"
+          fi
           release_result=success
-          for job_result in "$PLAN_RESULT" "$RELEASE_PLEASE_RESULT" "$REQUIRED_BUILDS_RESULT" "$DEPLOY_RESULT"; do
+          for job_result in "$PLAN_RESULT" "$RELEASE_PLEASE_RESULT" "$required_builds_result" "$deploy_result"; do
             if [[ "$job_result" == failure || "$job_result" == cancelled ]]; then
               release_result=failure
             fi
           done
           printf 'release-result=%s\n' "$release_result" >> "$GITHUB_OUTPUT"
-          printf 'required-builds-result=%s\n' "$REQUIRED_BUILDS_RESULT" >> "$GITHUB_OUTPUT"
-          printf 'deploy-result=%s\n' "$DEPLOY_RESULT" >> "$GITHUB_OUTPUT"
+          printf 'required-builds-result=%s\n' "$required_builds_result" >> "$GITHUB_OUTPUT"
+          printf 'deploy-result=%s\n' "$deploy_result" >> "$GITHUB_OUTPUT"

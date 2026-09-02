@@ -150,7 +150,6 @@ jobs:
   release:
     name: Exercise ${{ inputs.test-id }} release pipeline
     needs: infrastructure
-    continue-on-error: ${{ inputs.expected-release-result == 'failure' }}
     permissions:
       actions: read
       contents: write
@@ -170,6 +169,7 @@ jobs:
       rebuild: ${{ inputs.rebuild }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
       alert-webhook-override: ${{ needs.infrastructure.outputs.alert-webhook-override }}
+      allow-failure: ${{ inputs.expected-release-result == 'failure' }}
     secrets: inherit
 
   verify:
