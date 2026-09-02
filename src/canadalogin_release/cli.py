@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .config import ConfigError, PipelineConfig
 from .integrations.github import promotions_from_json, sync_deployment_comment
-from .integrations.notifications import (
+from .integrations.slack_notifications import (
     notify,
     notify_pipeline_failure,
     pipeline_failure_webhook_values,

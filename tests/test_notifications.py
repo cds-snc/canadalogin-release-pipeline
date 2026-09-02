@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from canadalogin_release.config import PipelineConfig
-from canadalogin_release.integrations.notifications import (
+from canadalogin_release.integrations.slack_notifications import (
     alert_webhook_values,
     default_alert_webhook_values,
     default_info_webhook_values,

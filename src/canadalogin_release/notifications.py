@@ -1,3 +1,3 @@
-"""Compatibility imports for the pre-namespace notifications module."""
+"""Compatibility imports for the pre-namespace Slack notifications module."""
 
-from .integrations.notifications import *
+from .integrations.slack_notifications import *
