@@ -2,7 +2,12 @@ import os
 import unittest
 from unittest.mock import patch
 
-from acceptance.support.verify import VerificationContext, verify_react_site
+from acceptance.support.verify import (
+    VerificationContext,
+    VerificationError,
+    release_image_exists,
+    verify_react_site,
+)
 
 
 class AcceptanceVerificationTests(unittest.TestCase):
@@ -21,6 +26,36 @@ class AcceptanceVerificationTests(unittest.TestCase):
         self.assertEqual(context.environment, "dev")
         self.assertEqual(context.required_builds_result, "failure")
         self.assertEqual(context.deploy_result, "skipped")
+
+    @patch(
+        "acceptance.support.verify.aws_json",
+        side_effect=VerificationError("ImageNotFoundException"),
+    )
+    def test_release_image_exists_returns_false_when_ecr_image_is_missing(
+        self, aws_json
+    ) -> None:
+        self.assertFalse(release_image_exists({"ecr_repository": "app"}, "a" * 40))
+
+        aws_json.assert_called_once_with(
+            "ecr",
+            "describe-images",
+            "--repository-name",
+            "app",
+            "--image-ids",
+            f"imageTag={'a' * 40}",
+        )
+
+    @patch(
+        "acceptance.support.verify.aws_json",
+        side_effect=VerificationError("AccessDeniedException"),
+    )
+    def test_release_image_exists_propagates_other_ecr_errors(
+        self, aws_json
+    ) -> None:
+        with self.assertRaisesRegex(VerificationError, "AccessDeniedException"):
+            release_image_exists({"ecr_repository": "app"}, "a" * 40)
+
+        aws_json.assert_called_once()
 
     @patch("acceptance.support.verify.command", return_value="a" * 40)
     @patch(

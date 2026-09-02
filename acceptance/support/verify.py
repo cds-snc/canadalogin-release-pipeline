@@ -170,6 +170,24 @@ def verify_ecr(resources: Mapping[str, str], release_sha: str) -> str:
     return digest
 
 
+def release_image_exists(resources: Mapping[str, str], release_sha: str) -> bool:
+    try:
+        document = aws_json(
+            "ecr",
+            "describe-images",
+            "--repository-name",
+            resource(resources, "ecr_repository"),
+            "--image-ids",
+            f"imageTag={release_sha}",
+        )
+    except VerificationError as error:
+        if "ImageNotFoundException" in str(error):
+            return False
+        raise
+    details = document.get("imageDetails")
+    return isinstance(details, list) and bool(details)
+
+
 def verify_ecs(resources: Mapping[str, str], release_sha: str, digest: str) -> None:
     document = aws_json(
         "ecs",
@@ -381,15 +399,10 @@ def verify_build_failure(context: VerificationContext) -> None:
         "Deployment was not skipped after the failed build.",
     )
     resources = resolve_resources(context.resources, context.account_id, context.region)
-    image = aws_json(
-        "ecr",
-        "describe-images",
-        "--repository-name",
-        resource(resources, "ecr_repository"),
-        "--image-ids",
-        f"imageTag={context.release_sha}",
-    ).get("imageDetails")
-    require(not image, "A failed build published a release image.")
+    require(
+        not release_image_exists(resources, context.release_sha),
+        "A failed build published a release image.",
+    )
 
     parameter = aws_json(
         "ssm",
