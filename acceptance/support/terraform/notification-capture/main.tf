@@ -94,5 +94,4 @@ resource "aws_lambda_permission" "public_url_invocation" {
   function_name            = aws_lambda_function.capture.function_name
   principal                = "*"
   invoked_via_function_url = true
-  function_url_auth_type   = "NONE"
 }
