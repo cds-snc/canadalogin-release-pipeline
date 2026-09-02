@@ -39,7 +39,7 @@ class PlannerTest(unittest.TestCase):
             return workflow_sha
         return f"{environment}-sha"
 
-    def test_push_builds_every_artifact_and_deploys_every_environment(self) -> None:
+    def test_push_builds_every_artifact_and_deploys_promoted_environments(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")
         with self.repository_with_version("test", "1.2.3") as repository:
             plan = create_plan(
@@ -54,13 +54,25 @@ class PlannerTest(unittest.TestCase):
         self.assertTrue(plan.release_please)
         self.assertEqual([item.environment for item in plan.promotions], ["test"])
         self.assertEqual(len(plan.required_builds), 6)
-        self.assertEqual(plan.target_environments, ("dev", "test", "staging", "prod"))
+        self.assertEqual(plan.target_environments, ("dev", "test"))
         self.assertEqual(plan.required_builds[-1]["name"], "load-test")
         self.assertEqual(plan.required_builds[-1]["sha"], "staging-sha")
         self.assertEqual(
             [deployment["sha"] for deployment in plan.deployments],
-            ["abc123", "test-sha", "staging-sha", "prod-sha"],
+            ["abc123", "test-sha"],
         )
+
+    def test_push_deploys_only_dev_without_version_promotions(self) -> None:
+        config = self.config("canadalogin-user-selfservice-webapp")
+        plan = create_plan(
+            config,
+            event_name="push",
+            sha="abc123",
+            changed_paths=[],
+            sha_resolver=self.resolve_sha,
+        )
+
+        self.assertEqual(plan.target_environments, ("dev",))
 
     def test_manual_dev_rebuild_still_refreshes_staging_load_test(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")
@@ -177,26 +189,25 @@ class PlannerTest(unittest.TestCase):
                 changed_paths=[],
             )
 
-    def test_force_redeploy_uses_existing_staging_artifacts(self) -> None:
+    def test_force_deploy_selects_all_environments(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")
         plan = create_plan(
             config,
             event_name="workflow_dispatch",
             manual_environment="staging",
-            force_redeploy=True,
+            force_deploy=True,
             rebuild=False,
             sha="abc123",
             changed_paths=[],
             sha_resolver=self.resolve_sha,
         )
 
-        self.assertTrue(plan.force_redeploy)
         self.assertEqual(
             [build["name"] for build in plan.required_builds], ["load-test"]
         )
         self.assertEqual(plan.required_builds[0]["sha"], "staging-sha")
-        self.assertEqual(plan.target_environments, ("staging",))
-        self.assertTrue(plan.deployments[0]["notify"])
+        self.assertEqual(plan.target_environments, ("dev", "test", "staging", "prod"))
+        self.assertTrue(all(deployment["notify"] for deployment in plan.deployments))
 
     def test_manual_dev_run_still_refreshes_staging_load_test(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")

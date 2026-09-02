@@ -44,7 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--environment", default="")
     plan_parser.add_argument("--repository-dispatch-event", default="")
     plan_parser.add_argument(
+        "--force-deploy",
         "--force-redeploy",
+        dest="force_deploy",
         action="store_true",
     )
     plan_parser.add_argument("--rebuild", action="store_true")
@@ -110,8 +112,10 @@ def run_validate(options: argparse.Namespace) -> int:
 
 def run_plan(options: argparse.Namespace) -> int:
     config = _load_config(options)
-    force_redeploy = options.force_redeploy or _environment_bool(
-        "RELEASE_FORCE_REDEPLOY"
+    force_deploy = (
+        options.force_deploy
+        or _environment_bool("RELEASE_FORCE_DEPLOY")
+        or _environment_bool("RELEASE_FORCE_REDEPLOY")
     )
     rebuild = options.rebuild or _environment_bool("RELEASE_REBUILD")
     validation = validate_repository(config, options.repository)
@@ -124,7 +128,7 @@ def run_plan(options: argparse.Namespace) -> int:
         repository=options.repository,
         before_sha=options.before_sha,
         manual_environment=options.environment,
-        force_redeploy=force_redeploy,
+        force_deploy=force_deploy,
         rebuild=rebuild,
         repository_dispatch_event=options.repository_dispatch_event,
     )

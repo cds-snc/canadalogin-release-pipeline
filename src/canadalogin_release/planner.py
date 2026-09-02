@@ -24,7 +24,6 @@ class Promotion:
 class Plan:
     event_name: str
     release_please: bool
-    force_redeploy: bool
     promotions: tuple[Promotion, ...]
     required_builds: tuple[dict[str, object], ...]
     deployments: tuple[dict[str, object], ...]
@@ -37,7 +36,6 @@ class Plan:
         promotion_values = [asdict(promotion) for promotion in self.promotions]
         return {
             "release_please": _boolean(self.release_please),
-            "force_redeploy": _boolean(self.force_redeploy),
             "has_promotions": _boolean(bool(self.promotions)),
             "has_required_builds": _boolean(bool(self.required_builds)),
             "has_deployments": _boolean(bool(self.deployments)),
@@ -63,7 +61,7 @@ def create_plan(
     repository: str | Path = ".",
     before_sha: str = "",
     manual_environment: str = "",
-    force_redeploy: bool = False,
+    force_deploy: bool = False,
     rebuild: bool = False,
     repository_dispatch_event: str = "",
     changed_paths: Sequence[str] | None = None,
@@ -86,6 +84,8 @@ def create_plan(
         config,
         event_name,
         manual_environment=manual_environment,
+        force_deploy=force_deploy,
+        promotions=promotions,
         repository_dispatch_event=repository_dispatch_event,
     )
 
@@ -164,7 +164,6 @@ def create_plan(
     return Plan(
         event_name=event_name,
         release_please=event_name == "push",
-        force_redeploy=force_redeploy,
         promotions=promotions,
         required_builds=tuple(required_builds),
         deployments=tuple(deployments),
@@ -261,10 +260,18 @@ def _targets(
     event_name: str,
     *,
     manual_environment: str,
+    force_deploy: bool,
+    promotions: Sequence[Promotion],
     repository_dispatch_event: str,
 ) -> tuple[str, ...]:
     if event_name == "push":
-        return config.environments.deploy
+        promoted_environments = {promotion.environment for promotion in promotions}
+        return tuple(
+            environment
+            for environment in config.environments.deploy
+            if environment == config.environments.development
+            or environment in promoted_environments
+        )
     if event_name in {"pull_request", "pull_request_target"}:
         return ()
     if event_name == "repository_dispatch":
@@ -276,6 +283,8 @@ def _targets(
         targets = config.repository_dispatch[repository_dispatch_event]
         return _validate_targets(config, targets)
     if event_name == "workflow_dispatch":
+        if force_deploy:
+            return config.environments.deploy
         selected = manual_environment or config.environments.development
         targets = config.environments.deploy if selected == "all" else (selected,)
         return _validate_targets(config, targets)

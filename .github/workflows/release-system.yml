@@ -14,7 +14,7 @@ on:
         default: ""
         type: string
       force-redeploy:
-        description: Force same-version ECS services to redeploy.
+        description: Force deployments to all enabled environments.
         required: false
         default: false
         type: boolean

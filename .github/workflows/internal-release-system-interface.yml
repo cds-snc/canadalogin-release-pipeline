@@ -55,7 +55,6 @@ jobs:
       contents: read
     outputs:
       release_please: ${{ steps.plan.outputs.release_please }}
-      force_redeploy: ${{ steps.plan.outputs.force_redeploy }}
       has_promotions: ${{ steps.plan.outputs.has_promotions }}
       has_required_builds: ${{ steps.plan.outputs.has_required_builds }}
       has_deployments: ${{ steps.plan.outputs.has_deployments }}
@@ -80,7 +79,7 @@ jobs:
           CONFIG_PATH: ${{ inputs.config-path }}
           MANUAL_ENVIRONMENT: ${{ inputs.environment }}
           PLAN_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          RELEASE_FORCE_REDEPLOY: ${{ inputs.force-redeploy }}
+          RELEASE_FORCE_DEPLOY: ${{ inputs.force-redeploy }}
           RELEASE_REBUILD: ${{ inputs.rebuild }}
           REPOSITORY_DISPATCH_EVENT: ${{ github.event.action || '' }}
         run: |
@@ -244,7 +243,6 @@ jobs:
       sha: ${{ matrix.sha }}
       s3-role: ${{ matrix.s3_role }}
       ecs-role: ${{ matrix.ecs_role }}
-      force-redeploy: ${{ fromJSON(needs.plan.outputs.force_redeploy) }}
       notify: ${{ matrix.notify }}
       notify-failure: ${{ matrix.notify_failure }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}

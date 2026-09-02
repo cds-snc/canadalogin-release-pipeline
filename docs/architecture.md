@@ -92,6 +92,7 @@ sequenceDiagram
 ## Failure boundaries
 
 - A required build failure prevents every deployment.
+- Pushes deploy `dev` and versioned environments whose `.deployed_versions/<environment>.json` changed; a manual force deployment selects every configured environment.
 - Frontend and backend resources for one environment run in one job.
 - At most one environment matrix job runs at a time. GitHub does not guarantee matrix order, so environments must be independently reconcilable.
 - Build matrices use `fail-fast: false` so all failures are visible before deployment is considered.

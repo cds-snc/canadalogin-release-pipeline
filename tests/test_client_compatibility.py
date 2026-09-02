@@ -78,7 +78,7 @@ class ClientCompatibilityTest(unittest.TestCase):
                     expected["cloudfront_invalidations"],
                 )
 
-    def test_push_plans_cover_every_client_environment_and_build(self) -> None:
+    def test_push_plans_build_every_artifact_and_deploy_dev(self) -> None:
         workflow_sha = "a" * 40
         for repository in CLIENT_SHAPES:
             with self.subTest(repository=repository):
@@ -91,8 +91,11 @@ class ClientCompatibilityTest(unittest.TestCase):
                     sha_resolver=self.resolve_sha,
                 )
 
-                self.assertEqual(plan.target_environments, config.environments.deploy)
-                self.assertEqual(len(plan.deployments), len(config.environments.deploy))
+                self.assertEqual(
+                    plan.target_environments,
+                    (config.environments.development,),
+                )
+                self.assertEqual(len(plan.deployments), 1)
                 self.assertEqual(
                     {entry["name"] for entry in plan.required_builds},
                     {build.name for build in config.builds},

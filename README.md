@@ -21,8 +21,9 @@ This repository centralizes the release system used by CanadaLogin applications.
 
 ## Deployment behaviour
 
-- The `dev` environment always tracks `main` and is deployd on every merge to main.
-- All other environments track pinned versions in the `.deployed_versions/` directory. These environments are deployed by updating these files and merging to main.
+- The `dev` environment always tracks `main` and is deployed on every merge to main.
+- All other environments track pinned versions in the `.deployed_versions/` directory. They deploy only when their version file is updated and merged to main.
+- A manual run with **Force deployments to all enabled environments** selected deploys the current desired version to every configured environment.
 - By default, `test` is auto-incremented when a release is made using release-please. Thus `test` always tracks the latest release.
 - Other higher environments are manually incremented as needed. Do so using the usual PR process.
 - GitHub CODEOWNERS or branch rulesets can be used to assign required approvers to deploy to specific environments.
