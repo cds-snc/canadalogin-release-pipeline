@@ -218,7 +218,7 @@ jobs:
           --detail "$BUILD_NAME"
 
   sbom:
-    if: inputs.sbom-enabled && needs.build.result == 'success'
+    if: inputs.sbom-enabled && needs.build.outputs.result == 'success'
     needs: build
     name: Publish image SBOM
     runs-on: ubuntu-latest

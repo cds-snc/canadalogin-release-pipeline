@@ -179,7 +179,10 @@ class WorkflowContractTest(unittest.TestCase):
 
         self.assertIn("contents: read\n      id-token: write", workflow)
         self.assertIn("sbom:\n", workflow)
-        self.assertIn("sbom:\n    if: inputs.sbom-enabled", workflow)
+        self.assertIn(
+            "sbom:\n    if: inputs.sbom-enabled && needs.build.outputs.result == 'success'",
+            workflow,
+        )
         self.assertIn(
             "permissions:\n      contents: write\n      id-token: write", workflow
         )
