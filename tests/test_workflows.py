@@ -121,10 +121,20 @@ class WorkflowContractTest(unittest.TestCase):
             / "internal-release-system-interface.yml"
         ).read_text()
 
+        self.assertIn('plan_outputs="$(mktemp)"', workflow)
+        self.assertIn('GITHUB_OUTPUT="$plan_outputs" canadalogin-release plan', workflow)
+        self.assertIn('cat "$plan_outputs" >> "$GITHUB_OUTPUT"', workflow)
+        self.assertNotIn('plan="$(canadalogin-release plan', workflow)
         self.assertIn("printf 'Required builds:\\n'", workflow)
-        self.assertIn(".required_build_matrix | fromjson", workflow)
+        self.assertIn(
+            "sed -n 's/^required_build_matrix=//p' \"$plan_outputs\" | jq .",
+            workflow,
+        )
         self.assertIn("printf '\\nDeployments:\\n'", workflow)
-        self.assertIn(".deployment_matrix | fromjson", workflow)
+        self.assertIn(
+            "sed -n 's/^deployment_matrix=//p' \"$plan_outputs\" | jq .",
+            workflow,
+        )
 
     def test_workflow_checkouts_do_not_persist_credentials(self) -> None:
         for path in self.workflow_files():
