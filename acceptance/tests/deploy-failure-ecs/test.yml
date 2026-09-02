@@ -1,0 +1,28 @@
+schema_version: 1
+id: deploy-failure-ecs
+name: Expected ECS deployment health-check failure
+enabled: true
+
+release:
+  config_path: release-pipeline-configuration.yml
+  environment: dev
+  github_environment: acceptance-tests
+  pipeline_id_prefix: acceptance-deploy-failure
+  create_deployment: false
+  expected_release_result: failure
+  rebuild: true
+
+infrastructure:
+  terraform_directory: infra
+
+verification:
+  script: verify.py
+  aws_role: cl-acceptance-deploy-failure-actions
+  resources:
+    app_name: cl-acceptance-deploy-failure
+    ecr_repository: cl-acceptance-deploy-failure
+    cluster: cl-acceptance-deploy-failure
+    service: cl-acceptance-deploy-failure-app
+    ssm_parameter: /ecs/cl-acceptance-deploy-failure/cl-acceptance-deploy-failure-app/container-image
+    notification_capture_function: enabled
+    notification_capture_table: cl-acceptance-deploy-failure-notifications

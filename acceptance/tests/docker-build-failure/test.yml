@@ -1,0 +1,28 @@
+schema_version: 1
+id: docker-build-failure
+name: Expected ECS build failure
+enabled: true
+
+release:
+  config_path: release-pipeline-configuration.yml
+  environment: dev
+  github_environment: acceptance-tests
+  pipeline_id_prefix: acceptance-docker-build-failure
+  create_deployment: false
+  expected_release_result: failure
+  rebuild: true
+
+infrastructure:
+  terraform_directory: infra
+
+verification:
+  script: verify.py
+  aws_role: cl-acceptance-docker-build-failure-actions
+  resources:
+    app_name: cl-acceptance-docker-build-failure
+    ecr_repository: cl-acceptance-docker-build-failure
+    cluster: cl-acceptance-docker-build-failure
+    service: cl-acceptance-docker-build-failure-app
+    ssm_parameter: /ecs/cl-acceptance-docker-build-failure/cl-acceptance-docker-build-failure-app/container-image
+    notification_capture_function: enabled
+    notification_capture_table: cl-acceptance-docker-build-failure-notifications

@@ -1,0 +1,9 @@
+schema_version: 2
+application: release-pipeline acceptance deployment failure
+profile: ecs-service
+environments: [dev]
+
+backend:
+  dockerfile: acceptance/tests/deploy-failure-ecs/app/Dockerfile
+  build_args:
+    APP_VERSION: "{release_version}"

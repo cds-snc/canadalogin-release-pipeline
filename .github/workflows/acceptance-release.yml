@@ -2,6 +2,16 @@ name: Acceptance release pipeline
 
 on:
   workflow_call:
+    outputs:
+      release-result:
+        description: Actual conclusion of the nested release jobs.
+        value: ${{ jobs.release.outputs.release-result }}
+      required-builds-result:
+        description: Actual conclusion of the nested required-builds job.
+        value: ${{ jobs.release.outputs.required-builds-result }}
+      deploy-result:
+        description: Actual conclusion of the nested deployment job.
+        value: ${{ jobs.release.outputs.deploy-result }}
     inputs:
       config-path:
         description: Path to the acceptance release configuration.
@@ -39,6 +49,10 @@ on:
         description: Per-test non-secret schema 2 infrastructure variables.
         required: true
         type: string
+      alert-webhook-override:
+        description: Optional isolated endpoint used to capture failure alerts.
+        required: true
+        type: string
 
 jobs:
   release:
@@ -53,4 +67,5 @@ jobs:
       environment: ${{ inputs.environment }}
       rebuild: ${{ inputs.rebuild }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
+      alert-webhook-override: ${{ inputs.alert-webhook-override }}
     secrets: inherit

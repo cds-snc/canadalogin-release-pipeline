@@ -24,6 +24,8 @@ class VerificationContext:
     environment: str
     expected_result: str
     pipeline_result: str
+    required_builds_result: str
+    deploy_result: str
     repository: str | None
     run_id: str | None
 
@@ -55,6 +57,8 @@ class VerificationContext:
             environment=os.environ.get("ACCEPTANCE_ENVIRONMENT", ""),
             expected_result=os.environ.get("EXPECTED_RESULT", "success"),
             pipeline_result=os.environ.get("PIPELINE_RESULT", ""),
+            required_builds_result=os.environ.get("REQUIRED_BUILDS_RESULT", ""),
+            deploy_result=os.environ.get("DEPLOY_RESULT", ""),
             repository=os.environ.get("GITHUB_REPOSITORY"),
             run_id=os.environ.get("RUN_ID"),
         )
@@ -343,6 +347,86 @@ def verify_common(context: VerificationContext) -> dict[str, str]:
     verify_ecs(resources, context.release_sha, digest)
     verify_http_response(load_balancer_url(resources), context.release_sha)
     return resources
+
+
+def verify_failure_alert(context: VerificationContext, action: str) -> None:
+    table = resource(context.resources, "notification_capture_table")
+    document = aws_json("dynamodb", "scan", "--table-name", table)
+    items = document.get("Items")
+    require(isinstance(items, list), "Notification capture returned invalid items.")
+    workflow_url = f"actions/runs/{context.run_id}"
+    expected_text = f"failed to {action} for"
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        body = item.get("body")
+        if not isinstance(body, dict):
+            continue
+        value = body.get("S")
+        if not isinstance(value, str):
+            continue
+        if expected_text in value and workflow_url in value:
+            return
+    raise VerificationError(f"No {action}-failure Slack notification was captured.")
+
+
+def verify_build_failure(context: VerificationContext) -> None:
+    require(context.pipeline_result == "failure", "The build pipeline did not fail.")
+    require(
+        context.required_builds_result == "failure",
+        "The required build job did not fail.",
+    )
+    require(
+        context.deploy_result == "skipped",
+        "Deployment was not skipped after the failed build.",
+    )
+    resources = resolve_resources(context.resources, context.account_id, context.region)
+    image = aws_json(
+        "ecr",
+        "describe-images",
+        "--repository-name",
+        resource(resources, "ecr_repository"),
+        "--image-ids",
+        f"imageTag={context.release_sha}",
+    ).get("imageDetails")
+    require(not image, "A failed build published a release image.")
+
+    parameter = aws_json(
+        "ssm",
+        "get-parameter",
+        "--name",
+        resource(resources, "ssm_parameter"),
+    ).get("Parameter", {})
+    require(
+        isinstance(parameter, dict)
+        and parameter.get("Value") != f"{resources['ecr_uri']}:{context.release_sha}",
+        "A deployment ran after the failed build.",
+    )
+    verify_failure_alert(context, "build")
+
+
+def verify_deploy_failure(context: VerificationContext) -> None:
+    require(context.pipeline_result == "failure", "The deployment pipeline did not fail.")
+    require(
+        context.required_builds_result == "success",
+        "The required build job did not succeed before deployment.",
+    )
+    require(context.deploy_result == "failure", "The deployment job did not fail.")
+    resources = resolve_resources(context.resources, context.account_id, context.region)
+    verify_ecr(resources, context.release_sha)
+
+    parameter = aws_json(
+        "ssm",
+        "get-parameter",
+        "--name",
+        resource(resources, "ssm_parameter"),
+    ).get("Parameter", {})
+    require(
+        isinstance(parameter, dict)
+        and parameter.get("Value") != f"{resources['ecr_uri']}:{context.release_sha}",
+        "The failed ECS rollout updated the image pointer.",
+    )
+    verify_failure_alert(context, "deploy")
 
 
 def verify_react_site(

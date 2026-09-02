@@ -48,6 +48,15 @@ def default_alert_webhook_values(secrets: Mapping[str, str]) -> tuple[str, ...]:
     )
 
 
+def alert_webhook_values(secrets: Mapping[str, str]) -> tuple[str, ...]:
+    override = secrets.get(
+        "RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_OVERRIDE", ""
+    )
+    if override:
+        return (override,)
+    return default_alert_webhook_values(secrets)
+
+
 def _default_webhook_values(
     base_secret: str,
     numbered_secrets: Sequence[str],
@@ -84,7 +93,7 @@ def notify(
     if channel == "info":
         webhooks = default_info_webhook_values(os.environ)
     else:
-        webhooks = default_alert_webhook_values(os.environ)
+        webhooks = alert_webhook_values(os.environ)
     if not webhooks:
         log(f"No {channel} Slack webhook is configured; skipping notification.")
         return NotificationResult(delivered=0, skipped=True)

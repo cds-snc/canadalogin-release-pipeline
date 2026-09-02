@@ -289,9 +289,9 @@ data "aws_iam_policy_document" "github_actions" {
   }
 
   statement {
-    sid       = "UpdateImagePointer"
-    effect    = "Allow"
-    actions   = ["ssm:GetParameter", "ssm:PutParameter"]
+    sid     = "UpdateImagePointer"
+    effect  = "Allow"
+    actions = ["ssm:GetParameter", "ssm:PutParameter"]
     resources = [
       "arn:aws:ssm:${var.aws_region}:${var.account_id}:parameter/${trimprefix(var.ssm_parameter_name, "/")}"
     ]
@@ -322,6 +322,17 @@ data "aws_iam_policy_document" "github_actions" {
       "elasticloadbalancing:DescribeTargetHealth",
     ]
     resources = ["*"]
+  }
+
+  dynamic "statement" {
+    for_each = var.notification_capture_table_arn != "" ? [var.notification_capture_table_arn] : []
+
+    content {
+      sid       = "ReadNotificationCapture"
+      effect    = "Allow"
+      actions   = ["dynamodb:Scan"]
+      resources = [statement.value]
+    }
   }
 }
 

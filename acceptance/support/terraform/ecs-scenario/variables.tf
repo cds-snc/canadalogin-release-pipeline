@@ -55,3 +55,8 @@ variable "site_bucket_names" {
   type    = map(string)
   default = {}
 }
+
+variable "notification_capture_table_arn" {
+  type    = string
+  default = ""
+}

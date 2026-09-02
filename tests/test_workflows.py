@@ -63,6 +63,8 @@ class WorkflowContractTest(unittest.TestCase):
         )
         self.assertIn("needs: [plan, release_please, required_builds]", pipeline)
         self.assertIn("needs.required_builds.result == 'success'", pipeline)
+        self.assertIn("required-builds-result:", pipeline)
+        self.assertIn("deploy-result:", pipeline)
         self.assertIn("strategy:\n      fail-fast: false\n      matrix:", deployment)
         self.assertNotIn("max-parallel: 1", deployment)
         self.assertNotIn("aws-account-id:", workflow)

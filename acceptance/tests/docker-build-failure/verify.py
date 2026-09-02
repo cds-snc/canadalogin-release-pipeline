@@ -3,14 +3,14 @@ import sys
 from acceptance.support.verify import (
     VerificationContext,
     VerificationError,
-    verify_common,
+    verify_build_failure,
 )
 
 
 def main() -> int:
     context = VerificationContext.from_environment()
-    verify_common(context)
-    print("Acceptance verification passed for failure-ecs.")
+    verify_build_failure(context)
+    print("Acceptance verification passed for docker-build-failure.")
     return 0
 
 

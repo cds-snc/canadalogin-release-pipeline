@@ -1,3 +1,5 @@
+# Top-level workflow orchestrating the acceptance test process.
+
 name: Acceptance test
 
 on:
@@ -47,10 +49,14 @@ on:
         description: Create a GitHub deployment record for the test environment.
         required: true
         type: boolean
-      expect-test-failure:
-        description: Exercise an expected failure owned by the acceptance wrapper.
+      expected-release-result:
+        description: Expected conclusion of the release pipeline.
         required: true
-        type: boolean
+        type: string
+      notification-capture-function:
+        description: Lambda function whose URL captures isolated alert notifications.
+        required: true
+        type: string
       rebuild:
         description: Rebuild artifacts during the test deployment.
         required: true
@@ -71,6 +77,8 @@ permissions:
 jobs:
   infrastructure:
     name: Prepare ${{ inputs.test-id }} infrastructure
+    outputs:
+      alert-webhook-override: ${{ steps.notification_capture.outputs.alert-webhook-override }}
     runs-on: ubuntu-latest
     environment:
       name: ${{ inputs.github-environment }}
@@ -129,9 +137,20 @@ jobs:
           TF_VAR_github_oidc_subject_prefix: repo:${{ github.repository_owner }}@${{ github.repository_owner_id }}/${{ github.event.repository.name }}@${{ github.repository_id }}
         run: terraform -chdir="$TERRAFORM_DIRECTORY" apply -input=false -auto-approve -no-color
 
+      - name: Resolve notification capture URL
+        if: inputs.notification-capture-function != ''
+        id: notification_capture
+        env:
+          TERRAFORM_DIRECTORY: ${{ inputs.terraform-directory }}
+        run: |
+          set -euo pipefail
+          url="$(terraform -chdir="$TERRAFORM_DIRECTORY" output -raw notification_capture_url)"
+          printf 'alert-webhook-override=%s\n' "$url" >> "$GITHUB_OUTPUT"
+
   release:
     name: Exercise ${{ inputs.test-id }} release pipeline
     needs: infrastructure
+    continue-on-error: ${{ inputs.expected-release-result == 'failure' }}
     permissions:
       actions: read
       contents: write
@@ -150,6 +169,7 @@ jobs:
       create-deployment: ${{ inputs.create-deployment }}
       rebuild: ${{ inputs.rebuild }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
+      alert-webhook-override: ${{ needs.infrastructure.outputs.alert-webhook-override }}
     secrets: inherit
 
   verify:
@@ -179,18 +199,6 @@ jobs:
       - name: Set up release tooling
         uses: ./actions/setup
 
-      - name: Run expected test failure
-        if: inputs.expect-test-failure
-        id: expected_test_failure
-        continue-on-error: true
-        run: exit 1
-
-      - name: Validate expected test failure
-        if: inputs.expect-test-failure
-        env:
-          FAILURE_OUTCOME: ${{ steps.expected_test_failure.outcome }}
-        run: test "$FAILURE_OUTCOME" = failure
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
@@ -202,10 +210,12 @@ jobs:
         env:
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id }}
           AWS_REGION: ${{ inputs.aws-region }}
-          EXPECTED_RESULT: success
+          EXPECTED_RESULT: ${{ inputs.expected-release-result }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
-          PIPELINE_RESULT: ${{ needs.release.result }}
+          PIPELINE_RESULT: ${{ needs.release.outputs.release-result }}
+          REQUIRED_BUILDS_RESULT: ${{ needs.release.outputs.required-builds-result }}
+          DEPLOY_RESULT: ${{ needs.release.outputs.deploy-result }}
           RELEASE_SHA: ${{ inputs.release-sha }}
           RUN_ID: ${{ github.run_id }}
         run: python3 acceptance/runner.py verify --test "${{ inputs.test-id }}"

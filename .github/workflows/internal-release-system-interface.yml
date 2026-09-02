@@ -2,6 +2,16 @@ name: CanadaLogin internal release system interface
 
 on:
   workflow_call:
+    outputs:
+      release-result:
+        description: Overall conclusion derived from release jobs.
+        value: ${{ jobs.release_result.outputs.release-result }}
+      required-builds-result:
+        description: Conclusion of the required builds job.
+        value: ${{ jobs.release_result.outputs.required-builds-result }}
+      deploy-result:
+        description: Conclusion of the deployment job.
+        value: ${{ jobs.release_result.outputs.deploy-result }}
     inputs:
       config-path:
         required: true
@@ -39,6 +49,10 @@ on:
         default: false
         type: boolean
       release-pipeline-vars:
+        required: false
+        default: ""
+        type: string
+      alert-webhook-override:
         required: false
         default: ""
         type: string
@@ -217,6 +231,7 @@ jobs:
       sbom-name: ${{ matrix.sbom_name }}
       sbom-dockerfile: ${{ matrix.sbom_dockerfile }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
+      alert-webhook-override: ${{ inputs.alert-webhook-override }}
     secrets: inherit
 
   deploy:
@@ -248,4 +263,35 @@ jobs:
       notify: ${{ matrix.notify }}
       notify-failure: ${{ matrix.notify_failure }}
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
+      alert-webhook-override: ${{ inputs.alert-webhook-override }}
     secrets: inherit
+
+  release_result:
+    name: Report release result
+    if: always()
+    needs: [plan, release_please, required_builds, deploy]
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      release-result: ${{ steps.result.outputs.release-result }}
+      required-builds-result: ${{ steps.result.outputs.required-builds-result }}
+      deploy-result: ${{ steps.result.outputs.deploy-result }}
+    steps:
+      - name: Report job conclusions
+        id: result
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          RELEASE_PLEASE_RESULT: ${{ needs.release_please.result }}
+          REQUIRED_BUILDS_RESULT: ${{ needs.required_builds.result }}
+          DEPLOY_RESULT: ${{ needs.deploy.result }}
+        run: |
+          set -euo pipefail
+          release_result=success
+          for job_result in "$PLAN_RESULT" "$RELEASE_PLEASE_RESULT" "$REQUIRED_BUILDS_RESULT" "$DEPLOY_RESULT"; do
+            if [[ "$job_result" == failure || "$job_result" == cancelled ]]; then
+              release_result=failure
+            fi
+          done
+          printf 'release-result=%s\n' "$release_result" >> "$GITHUB_OUTPUT"
+          printf 'required-builds-result=%s\n' "$REQUIRED_BUILDS_RESULT" >> "$GITHUB_OUTPUT"
+          printf 'deploy-result=%s\n' "$DEPLOY_RESULT" >> "$GITHUB_OUTPUT"
