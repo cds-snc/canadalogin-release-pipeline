@@ -58,6 +58,9 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn(
             "name: CanadaLogin internal release system interface\n", pipeline
         )
+        self.assertIn(
+            "description: Force deployments to all enabled environments.", workflow
+        )
         self.assertIn("needs: [plan, release_please, required_builds]", pipeline)
         self.assertIn("needs.required_builds.result == 'success'", pipeline)
         self.assertIn("strategy:\n      fail-fast: false\n      matrix:", deployment)
@@ -78,6 +81,12 @@ class WorkflowContractTest(unittest.TestCase):
         ).read_text())
         self.assertIn(
             "aws-region: ${{ inputs.aws-region || matrix.aws_region }}", pipeline
+        )
+        self.assertIn(
+            "RELEASE_FORCE_DEPLOY: ${{ inputs.force-redeploy }}", pipeline
+        )
+        self.assertNotIn(
+            "force-redeploy: ${{ fromJSON(needs.plan.outputs.", deployment
         )
 
     def test_environment_deployments_share_the_pipeline_concurrency_namespace(

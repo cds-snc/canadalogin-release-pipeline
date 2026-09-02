@@ -55,11 +55,6 @@ on:
         required: false
         default: ""
         type: string
-      force-redeploy:
-        description: Redeploy ECS services even when the desired image is current.
-        required: false
-        default: false
-        type: boolean
       notify:
         description: Send start and success deployment notifications.
         required: false
@@ -166,7 +161,6 @@ jobs:
           AWS_REGION: ${{ inputs.aws-region }}
           CONFIG_PATH: ${{ inputs.config-path }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          RELEASE_FORCE_REDEPLOY: ${{ inputs.force-redeploy }}
           RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
         run: >-
           canadalogin-release preflight-s3
