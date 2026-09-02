@@ -168,12 +168,7 @@ class WorkflowContractTest(unittest.TestCase):
 
         self.assertIn("name: acceptance-tests\n      deployment: false", acceptance)
         self.assertEqual(acceptance_test.count("deployment: false"), 2)
-        self.assertEqual(
-            build.count(
-                "deployment: ${{ inputs.github-environment != 'acceptance-tests' }}"
-            ),
-            2,
-        )
+        self.assertEqual(build.count("deployment: false"), 2)
         self.assertIn(
             "deployment: ${{ inputs.github-environment != 'acceptance-tests' }}",
             deploy,

@@ -115,7 +115,7 @@ jobs:
       result: ${{ steps.result.outputs.result }}
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
-      deployment: ${{ inputs.github-environment != 'acceptance-tests' }}
+      deployment: false
     steps:
       - name: Checkout caller repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -227,7 +227,7 @@ jobs:
       id-token: write
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
-      deployment: ${{ inputs.github-environment != 'acceptance-tests' }}
+      deployment: false
     steps:
       - name: Checkout caller repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
