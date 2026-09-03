@@ -190,7 +190,7 @@ def validate_release_pull_request(
 
 
 def acceptance_workflow_url(server_url: str, repository: str) -> str:
-    return f"{server_url.rstrip('/')}/{repository}/actions/workflows/acceptance-tests.yml"
+    return f"{server_url.rstrip('/')}/{repository}/actions/workflows/acceptance__acceptance-tests.yml"
 
 
 class GitHubClient:
@@ -265,7 +265,7 @@ class GitHubClient:
         self.request_json(
             "POST",
             self._url(
-                f"repos/{repository}/actions/workflows/acceptance-tests.yml/dispatches"
+                f"repos/{repository}/actions/workflows/acceptance__acceptance-tests.yml/dispatches"
             ),
             {
                 "ref": ref,

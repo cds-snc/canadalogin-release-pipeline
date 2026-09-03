@@ -31,7 +31,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertEqual(failures, [])
 
     def test_unit_test_check_has_an_explicit_user_facing_name(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "unit-tests.yml").read_text()
+        workflow = (ROOT / ".github" / "workflows" / "ci__unit-tests.yml").read_text()
 
         self.assertIn("name: Unit tests\n", workflow)
         self.assertIn("  test:\n    name: Unit tests", workflow)
@@ -44,13 +44,13 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_deployment_requires_build_result_and_runs_independently(self) -> None:
         workflow = (
-            ROOT / ".github" / "workflows" / "release-system.yml"
+            ROOT / ".github" / "workflows" / "release__release-system.yml"
         ).read_text()
         pipeline = (
             ROOT
             / ".github"
             / "workflows"
-            / "internal-release-system-interface.yml"
+            / "release__internal-release-system-interface.yml"
         ).read_text()
         deployment = pipeline.split("\n  deploy:\n", 1)[1]
 
@@ -79,13 +79,13 @@ class WorkflowContractTest(unittest.TestCase):
             pipeline,
         )
         acceptance_test = (
-            ROOT / ".github" / "workflows" / "run-one-acceptance-test.yml"
+            ROOT / ".github" / "workflows" / "acceptance__run-one-acceptance-test.yml"
         ).read_text()
         self.assertFalse(
             (ROOT / ".github" / "workflows" / "acceptance-release.yml").exists()
         )
         self.assertIn(
-            "uses: ./.github/workflows/internal-release-system-interface.yml",
+            "uses: ./.github/workflows/release__internal-release-system-interface.yml",
             acceptance_test,
         )
         self.assertIn("pipeline_id: ${{ inputs.pipeline-id-prefix }}-${{ github.run_id }}", acceptance_test)
@@ -103,7 +103,7 @@ class WorkflowContractTest(unittest.TestCase):
         self,
     ) -> None:
         workflow = (
-            ROOT / ".github" / "workflows" / "deploy-environment.yml"
+            ROOT / ".github" / "workflows" / "release__deploy-environment.yml"
         ).read_text()
 
         self.assertIn(
@@ -117,7 +117,7 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_deployment_workflow_has_no_lifecycle_hook_steps(self) -> None:
         workflow = (
-            ROOT / ".github" / "workflows" / "deploy-environment.yml"
+            ROOT / ".github" / "workflows" / "release__deploy-environment.yml"
         ).read_text()
 
         self.assertNotIn("canadalogin-release hook", workflow)
@@ -128,7 +128,7 @@ class WorkflowContractTest(unittest.TestCase):
             ROOT
             / ".github"
             / "workflows"
-            / "internal-release-system-interface.yml"
+            / "release__internal-release-system-interface.yml"
         ).read_text()
 
         self.assertIn('plan_outputs="$(mktemp)"', workflow)
@@ -159,12 +159,12 @@ class WorkflowContractTest(unittest.TestCase):
                     )
 
     def test_acceptance_jobs_use_environments_without_deployments(self) -> None:
-        acceptance = (ROOT / ".github" / "workflows" / "acceptance-tests.yml").read_text()
+        acceptance = (ROOT / ".github" / "workflows" / "acceptance__acceptance-tests.yml").read_text()
         acceptance_test = (
-            ROOT / ".github" / "workflows" / "run-one-acceptance-test.yml"
+            ROOT / ".github" / "workflows" / "acceptance__run-one-acceptance-test.yml"
         ).read_text()
-        build = (ROOT / ".github" / "workflows" / "build.yml").read_text()
-        deploy = (ROOT / ".github" / "workflows" / "deploy-environment.yml").read_text()
+        build = (ROOT / ".github" / "workflows" / "release__build.yml").read_text()
+        deploy = (ROOT / ".github" / "workflows" / "release__deploy-environment.yml").read_text()
 
         self.assertIn("name: acceptance-tests\n      deployment: false", acceptance)
         self.assertEqual(acceptance_test.count("deployment: false"), 2)
@@ -175,7 +175,7 @@ class WorkflowContractTest(unittest.TestCase):
         )
 
     def test_only_sbom_build_workflow_has_snapshot_write_permission(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text()
+        workflow = (ROOT / ".github" / "workflows" / "release__build.yml").read_text()
 
         self.assertIn("contents: read\n      id-token: write", workflow)
         self.assertIn("sbom:\n", workflow)
@@ -188,7 +188,7 @@ class WorkflowContractTest(unittest.TestCase):
         )
 
     def test_actionlint_workflow_lints_workflows(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "actionlint.yml").read_text()
+        workflow = (ROOT / ".github" / "workflows" / "ci__actionlint.yml").read_text()
 
         self.assertIn(
             "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12", workflow
@@ -197,7 +197,7 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_terraform_validation_workflow_validates_acceptance_terraform(self) -> None:
         workflow = (
-            ROOT / ".github" / "workflows" / "terraform-validation.yml"
+            ROOT / ".github" / "workflows" / "ci__terraform-validation.yml"
         ).read_text()
 
         self.assertIn("hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e", workflow)
@@ -210,7 +210,7 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("validate -no-color", workflow)
 
     def test_release_please_is_standalone_and_uses_version_manifest(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "release-please.yml").read_text()
+        workflow = (ROOT / ".github" / "workflows" / "release__release-please.yml").read_text()
         config = json.loads((ROOT / "release-please-config.json").read_text())
         manifest = json.loads((ROOT / ".release-please-manifest.json").read_text())
 
@@ -239,14 +239,14 @@ class WorkflowContractTest(unittest.TestCase):
         self,
     ) -> None:
         acceptance_test = (
-            ROOT / ".github" / "workflows" / "run-one-acceptance-test.yml"
+            ROOT / ".github" / "workflows" / "acceptance__run-one-acceptance-test.yml"
         ).read_text()
         pipeline = (
-            ROOT / ".github" / "workflows" / "internal-release-system-interface.yml"
+            ROOT / ".github" / "workflows" / "release__internal-release-system-interface.yml"
         ).read_text()
-        build = (ROOT / ".github" / "workflows" / "build.yml").read_text()
+        build = (ROOT / ".github" / "workflows" / "release__build.yml").read_text()
         deployment = (
-            ROOT / ".github" / "workflows" / "deploy-environment.yml"
+            ROOT / ".github" / "workflows" / "release__deploy-environment.yml"
         ).read_text()
 
         release = acceptance_test.split("\n  release:\n", 1)[1].split(
@@ -262,10 +262,10 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_acceptance_github_orchestration_uses_python_commands(self) -> None:
         command = (
-            ROOT / ".github" / "workflows" / "release-pipeline-test-command.yml"
+            ROOT / ".github" / "workflows" / "acceptance__release-pipeline-test-command.yml"
         ).read_text()
         suite = (
-            ROOT / ".github" / "workflows" / "acceptance-tests.yml"
+            ROOT / ".github" / "workflows" / "acceptance__acceptance-tests.yml"
         ).read_text()
 
         self.assertIn("uses: ./actions/setup", command)

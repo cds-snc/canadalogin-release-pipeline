@@ -1,4 +1,4 @@
-# This workflow listens for !test comments and dispatches the acceptance-tests workflow.
+# This workflow listens for !test comments and dispatches acceptance__acceptance-tests.yml.
 
 name: Request integration and acceptance tests
 

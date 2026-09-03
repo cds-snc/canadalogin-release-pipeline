@@ -1,7 +1,7 @@
 # This is the underlying workflow for the CanadaLogin release system.
 # This provides GitHub Actions features like concurrency, matrix build fanout,
 # job dependency and more. The bulk of the logic is implemented in src/.
-# It is called by `release-pipeline.yml`.
+# It is called by `release__release-system.yml`.
 
 name: CanadaLogin internal release system interface
 
@@ -215,7 +215,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    uses: ./.github/workflows/build.yml
+    uses: ./.github/workflows/release__build.yml
     with:
       config-path: ${{ inputs.config-path }}
       aws-account-id: ${{ inputs.aws-account-id }}
@@ -253,7 +253,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.deployment_matrix) }}
-    uses: ./.github/workflows/deploy-environment.yml
+    uses: ./.github/workflows/release__deploy-environment.yml
     with:
       config-path: ${{ inputs.config-path }}
       aws-account-id: ${{ inputs.aws-account-id }}

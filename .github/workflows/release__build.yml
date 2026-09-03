@@ -1,5 +1,5 @@
 # Build one release artifact according to the inputs.
-# This workflow is called by `release-pipeline.yml`.
+# This workflow is called by `release__internal-release-system-interface.yml`.
 
 name: Build release artifact
 
