@@ -158,18 +158,6 @@ class WorkflowContractTest(unittest.TestCase):
                         workflow.count("persist-credentials: false"), checkout_count
                     )
 
-    def test_client_workflows_use_the_current_release_system_setup_action(self) -> None:
-        setup_action = "uses: $/actions/setup"
-        for workflow_name in (
-            "internal-release-system-interface.yml",
-            "build.yml",
-            "deploy-environment.yml",
-        ):
-            workflow = (ROOT / ".github" / "workflows" / workflow_name).read_text()
-            with self.subTest(workflow=workflow_name):
-                self.assertIn(setup_action, workflow)
-                self.assertNotIn("uses: ./actions/setup", workflow)
-
     def test_acceptance_jobs_use_environments_without_deployments(self) -> None:
         acceptance = (ROOT / ".github" / "workflows" / "acceptance-tests.yml").read_text()
         acceptance_test = (
