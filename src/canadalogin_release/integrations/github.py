@@ -7,8 +7,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from .config import ConfigError
-from .planner import Promotion
+from ..config import ConfigError
+from ..pipeline.planner import Promotion
 
 COMMENT_MARKER = "<!-- canadalogin-release-deployment-impact -->"
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")

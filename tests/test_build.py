@@ -9,9 +9,9 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from canadalogin_release.build import execute_build
+from canadalogin_release.pipeline.build import execute_build
 from canadalogin_release.config import ConfigError, PipelineConfig
-from canadalogin_release.runtime import RuntimeContext
+from canadalogin_release.support.runtime import RuntimeContext
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
 

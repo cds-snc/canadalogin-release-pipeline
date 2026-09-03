@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from canadalogin_release.config import PipelineConfig
-from canadalogin_release.notifications import (
+from canadalogin_release.integrations.slack_notifications import (
     alert_webhook_values,
     default_alert_webhook_values,
     default_info_webhook_values,
@@ -15,7 +15,7 @@ from canadalogin_release.notifications import (
     notify_pipeline_failure,
     pipeline_failure_webhook_values,
 )
-from canadalogin_release.runtime import RuntimeContext
+from canadalogin_release.support.runtime import RuntimeContext
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
 

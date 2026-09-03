@@ -3,8 +3,11 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from canadalogin_release.build import execute_build as legacy_execute_build
 from canadalogin_release.config import PipelineConfig
-from canadalogin_release.planner import create_plan
+from canadalogin_release.pipeline.build import execute_build
+from canadalogin_release.pipeline.planner import create_plan
+from canadalogin_release.planner import create_plan as legacy_create_plan
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
 CLIENT_SHAPES = {
@@ -100,6 +103,10 @@ class ClientCompatibilityTest(unittest.TestCase):
                     {entry["name"] for entry in plan.required_builds},
                     {build.name for build in config.builds},
                 )
+
+    def test_legacy_imports_forward_to_namespaced_implementations(self) -> None:
+        self.assertIs(legacy_execute_build, execute_build)
+        self.assertIs(legacy_create_plan, create_plan)
 
 
 if __name__ == "__main__":

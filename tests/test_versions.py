@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 from canadalogin_release.config import ConfigError, PipelineConfig
-from canadalogin_release.versions import deployment_sha
+from canadalogin_release.support.versions import deployment_sha
 
 
 class VersionsTest(unittest.TestCase):

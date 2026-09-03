@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig, ValueReference
-from canadalogin_release.runtime import RuntimeContext, resolve_reference
+from canadalogin_release.support.runtime import RuntimeContext, resolve_reference
 
 BASE_CONFIG = """
 schema_version: 2

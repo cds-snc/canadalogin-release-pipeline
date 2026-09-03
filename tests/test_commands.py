@@ -6,7 +6,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
-from canadalogin_release.commands import CommandError, CommandRunner, log
+from canadalogin_release.support.commands import CommandError, CommandRunner, log
 
 
 class CommandRunnerTest(unittest.TestCase):

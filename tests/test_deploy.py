@@ -12,14 +12,14 @@ from pathlib import Path
 from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig
-from canadalogin_release.deploy import (
+from canadalogin_release.pipeline.deploy import (
     _ecs_rollout_failed,
     _ecs_service_diagnostics,
     _ecs_service_is_stable,
     deploy_ecs,
     deploy_s3,
 )
-from canadalogin_release.runtime import RuntimeContext
+from canadalogin_release.support.runtime import RuntimeContext
 
 EXAMPLES = Path(__file__).parents[1] / "examples"
 
@@ -875,7 +875,10 @@ class DeployTest(unittest.TestCase):
 
         output = StringIO()
         with (
-            patch("canadalogin_release.deploy.time.monotonic", side_effect=(0, 601)),
+            patch(
+                "canadalogin_release.pipeline.deploy.time.monotonic",
+                side_effect=(0, 601),
+            ),
             redirect_stdout(output),
             self.assertRaisesRegex(
                 ConfigError,
