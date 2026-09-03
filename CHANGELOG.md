@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.2.1](https://github.com/cds-snc/canadalogin-release-system/compare/v1.2.0...v1.2.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* acceptance reusable workflow failures ([#54](https://github.com/cds-snc/canadalogin-release-system/issues/54)) ([b1ce3e1](https://github.com/cds-snc/canadalogin-release-system/commit/b1ce3e16267e751c1db037bb2c817434c19039c7))
+* allow acceptance Lambda provisioning ([#55](https://github.com/cds-snc/canadalogin-release-system/issues/55)) ([2555c64](https://github.com/cds-snc/canadalogin-release-system/commit/2555c641dac1afd8ef59f1c1380596016a3d261a))
+* allow notification capture function URL invocations ([#60](https://github.com/cds-snc/canadalogin-release-system/issues/60)) ([dd51688](https://github.com/cds-snc/canadalogin-release-system/commit/dd516886b84f6447af38bbd6655f297253ea427a))
+* correct Lambda URL invoke permission ([#63](https://github.com/cds-snc/canadalogin-release-system/issues/63)) ([1be0d06](https://github.com/cds-snc/canadalogin-release-system/commit/1be0d0639cf0aab5869a1d928aa837b71d4c99d8))
+* deploy versioned environments on promotion ([#51](https://github.com/cds-snc/canadalogin-release-system/issues/51)) ([f6ff396](https://github.com/cds-snc/canadalogin-release-system/commit/f6ff3962943f98dd8ce9860c91bbd673bfb47f7e))
+* Fix planner interface output ([#52](https://github.com/cds-snc/canadalogin-release-system/issues/52)) ([97d44af](https://github.com/cds-snc/canadalogin-release-system/commit/97d44af0187bf7f6d52e62269a62eab5ccc21eea))
+* format deployment plan matrix logs ([#49](https://github.com/cds-snc/canadalogin-release-system/issues/49)) ([d32658b](https://github.com/cds-snc/canadalogin-release-system/commit/d32658b22424d87ee22a4db605bfb5ade2c975b8))
+* format plan matrix logs ([d32658b](https://github.com/cds-snc/canadalogin-release-system/commit/d32658b22424d87ee22a4db605bfb5ade2c975b8))
+* shorten acceptance fixture resource names ([#58](https://github.com/cds-snc/canadalogin-release-system/issues/58)) ([e9a1df3](https://github.com/cds-snc/canadalogin-release-system/commit/e9a1df3443c4aee5684af94b995ed0ac1b4d4c16))
+* skip SBOM after build failure ([#64](https://github.com/cds-snc/canadalogin-release-system/issues/64)) ([13bbf6e](https://github.com/cds-snc/canadalogin-release-system/commit/13bbf6ee1dcd34c60827189819c7e75ca4a1ba9d))
+* suppress acceptance deployment records ([#62](https://github.com/cds-snc/canadalogin-release-system/issues/62)) ([5f5dc24](https://github.com/cds-snc/canadalogin-release-system/commit/5f5dc24064ff4bb0c0d15ac443b6c6d890fd3c7a))
+* validate acceptance Terraform in CI ([#61](https://github.com/cds-snc/canadalogin-release-system/issues/61)) ([4bcf8e2](https://github.com/cds-snc/canadalogin-release-system/commit/4bcf8e27a0d562f774c05125ead17f6be61da4ec))
+* verify absent image after failed build ([#66](https://github.com/cds-snc/canadalogin-release-system/issues/66)) ([8e4130a](https://github.com/cds-snc/canadalogin-release-system/commit/8e4130a1a68d754653096d9b10c3c7686f6cfc4c))
+* verify deploy failure alert text ([716dbf4](https://github.com/cds-snc/canadalogin-release-system/commit/716dbf41e6a3a1b3e4fa1ec1344db2b8b3679a53))
+* verify deploy failure Slack alert ([#68](https://github.com/cds-snc/canadalogin-release-system/issues/68)) ([716dbf4](https://github.com/cds-snc/canadalogin-release-system/commit/716dbf41e6a3a1b3e4fa1ec1344db2b8b3679a53))
+
+
+### Code Refactoring
+
+* namespace release modules ([#67](https://github.com/cds-snc/canadalogin-release-system/issues/67)) ([f48afac](https://github.com/cds-snc/canadalogin-release-system/commit/f48afacee41493d8221db95f8cba1e0be417aa8d))
+* simplify acceptance workflows ([#56](https://github.com/cds-snc/canadalogin-release-system/issues/56)) ([b2cc93f](https://github.com/cds-snc/canadalogin-release-system/commit/b2cc93f24dbe0025f134b93c8dc04ac64bbab6eb))
+
+
+### Tests
+
+* cover release build and deploy failures ([#53](https://github.com/cds-snc/canadalogin-release-system/issues/53)) ([0ae550f](https://github.com/cds-snc/canadalogin-release-system/commit/0ae550f898ad0952d61240241e4690e69dec302b))
+
+
+### Miscellaneous Chores
+
+* rename acceptance workflows ([#59](https://github.com/cds-snc/canadalogin-release-system/issues/59)) ([ea33a84](https://github.com/cds-snc/canadalogin-release-system/commit/ea33a84fd6039752e454c44fecf3e37999fee438))
+
+
+### Documentation
+
+* Workflow docs ([#65](https://github.com/cds-snc/canadalogin-release-system/issues/65)) ([a84bc18](https://github.com/cds-snc/canadalogin-release-system/commit/a84bc184127e604d5c5058332fb48cd759e1e629))
+
 ## [1.2.0](https://github.com/cds-snc/canadalogin-release-system/compare/v1.1.0...v1.2.0) (2026-09-01)
 
 
