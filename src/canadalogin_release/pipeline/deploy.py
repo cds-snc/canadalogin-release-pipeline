@@ -153,6 +153,9 @@ def deploy_s3(
     return DeploymentResult(context.sha, tuple(changed), ())
 
 
+# This method validates that:
+# - The configured build artifacts exist in S3.
+# - Target S3 buckets and CloudFront distributions are accessible.
 def preflight_s3(
     config: PipelineConfig,
     context: RuntimeContext,
@@ -519,7 +522,10 @@ def _ecs_deployment_summary(deployment: Mapping[str, Any]) -> str:
         state += f" reason={reason}"
     return state
 
-
+# This method validates that:
+# - The ECR image tagged with the planned deployment SHA exists.
+# - ECS services, their task definitions, and configured containers are accessible.
+# - Configured SSM parameter names resolve to non-empty values.
 def preflight_ecs(
     config: PipelineConfig,
     context: RuntimeContext,
