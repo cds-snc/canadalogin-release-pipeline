@@ -1,3 +1,10 @@
+# config.py loads and validates the release pipeline configuration file.
+# It defines the data structures used to represent the configuration and
+# expands profile configurations into full sets of builds and deployments.
+#
+# The output here is a PipelineConfig object that planner.py uses to create
+# a release plan based on the current Git SHA, changed files, and other context.
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
