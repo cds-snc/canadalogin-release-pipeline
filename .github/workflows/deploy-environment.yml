@@ -107,7 +107,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up release tooling
-        uses: ./actions/setup
+        uses: $/actions/setup
 
       - name: Resolve AWS roles
         id: resolve-roles

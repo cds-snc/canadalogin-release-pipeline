@@ -88,7 +88,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up release tooling
-        uses: ./actions/setup
+        uses: $/actions/setup
 
       - name: Validate configuration and plan jobs
         id: plan
@@ -134,7 +134,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up release tooling
-        uses: ./actions/setup
+        uses: $/actions/setup
 
       - name: Update deployment impact comment
         env:
@@ -184,7 +184,7 @@ jobs:
       contents: read
     steps:
       - name: Set up release tooling
-        uses: ./actions/setup
+        uses: $/actions/setup
 
       - name: Notify Slack
         env:

@@ -127,7 +127,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up release tooling
-        uses: ./actions/setup
+        uses: $/actions/setup
 
       - name: Set up Node.js
         if: inputs.node-version != ''
@@ -239,7 +239,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up release tooling
-        uses: ./actions/setup
+        uses: $/actions/setup
 
       - name: Resolve AWS role
         if: inputs.aws-role != ''
