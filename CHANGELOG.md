@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.2](https://github.com/cds-snc/canadalogin-release-system/compare/v1.2.1...v1.2.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* bound notification capture retention ([#71](https://github.com/cds-snc/canadalogin-release-system/issues/71)) ([27cf734](https://github.com/cds-snc/canadalogin-release-system/commit/27cf734a2eba5a447beb3cff325b3aec750cc871))
+* restore release workflow setup ([#72](https://github.com/cds-snc/canadalogin-release-system/issues/72)) ([92d8125](https://github.com/cds-snc/canadalogin-release-system/commit/92d8125cb55d83af2ae40667d0c8bf913847dc24))
+
+
+### Code Refactoring
+
+* remove legacy module shims ([#69](https://github.com/cds-snc/canadalogin-release-system/issues/69)) ([d624061](https://github.com/cds-snc/canadalogin-release-system/commit/d624061652f2b28c133e832093c2dbee126236a1))
+
 ## [1.2.1](https://github.com/cds-snc/canadalogin-release-system/compare/v1.2.0...v1.2.1) (2026-09-03)
 
 
