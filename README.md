@@ -77,9 +77,3 @@ Every required build must pass before any environment begins deployment. Compone
 
 - [Manage application](examples/canadalogin-user-selfservice-webapp/release-pipeline-configuration.yml)
 - [Static website](examples/canadalogin-static-website/release-pipeline-configuration.yml)
-
-
-## Documentation
-
-- [Architecture and GitHub Actions behavior](docs/architecture.md)
-- [Configuration reference](docs/configuration.md)
