@@ -16,7 +16,12 @@ from ..config import (
     PipelineConfig,
 )
 from ..support.commands import CommandRunner, log
-from ..support.runtime import RuntimeContext, render, render_s3_prefix, resolve_reference
+from ..support.runtime import (
+    RuntimeContext,
+    render,
+    render_s3_prefix,
+    resolve_reference,
+)
 
 REGISTER_TASK_DEFINITION_FIELDS = {
     "containerDefinitions",

@@ -7,9 +7,19 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..config import BuildConfig, ConfigError, PipelineConfig
-from ..support.commands import GITHUB_CREDENTIALS, WORKFLOW_CREDENTIALS, CommandRunner, log
+from ..support.commands import (
+    GITHUB_CREDENTIALS,
+    WORKFLOW_CREDENTIALS,
+    CommandRunner,
+    log,
+)
 from ..support.git import run_git
-from ..support.runtime import RuntimeContext, render, render_s3_prefix, resolve_reference
+from ..support.runtime import (
+    RuntimeContext,
+    render,
+    render_s3_prefix,
+    resolve_reference,
+)
 from ..support.versions import deployment_sha, release_tag_for_sha
 
 GitRunner = Callable[[Sequence[str], str | Path], str]
