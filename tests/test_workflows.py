@@ -187,16 +187,18 @@ class WorkflowContractTest(unittest.TestCase):
             "permissions:\n      contents: write\n      id-token: write", workflow
         )
 
-    def test_unit_tests_lint_workflows(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "unit-tests.yml").read_text()
+    def test_actionlint_workflow_lints_workflows(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "actionlint.yml").read_text()
 
         self.assertIn(
             "go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12", workflow
         )
         self.assertIn('"$(go env GOPATH)/bin/actionlint" .github/workflows/*.yml', workflow)
 
-    def test_unit_tests_validate_acceptance_terraform(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "unit-tests.yml").read_text()
+    def test_terraform_validation_workflow_validates_acceptance_terraform(self) -> None:
+        workflow = (
+            ROOT / ".github" / "workflows" / "terraform-validation.yml"
+        ).read_text()
 
         self.assertIn("hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e", workflow)
         self.assertIn("terraform_version: 1.9.4", workflow)
