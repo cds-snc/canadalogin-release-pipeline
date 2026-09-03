@@ -6,6 +6,7 @@ from acceptance.support.verify import (
     VerificationContext,
     VerificationError,
     release_image_exists,
+    verify_failure_alert,
     verify_react_site,
 )
 
@@ -56,6 +57,46 @@ class AcceptanceVerificationTests(unittest.TestCase):
             release_image_exists({"ecr_repository": "app"}, "a" * 40)
 
         aws_json.assert_called_once()
+
+    @patch(
+        "acceptance.support.verify.aws_json",
+        return_value={
+            "Items": [
+                {
+                    "body": {
+                        "S": (
+                            ":x: release pipeline acceptance deployment failure "
+                            "failed to deploy to `acceptance-deploy-failure`.\n\n"
+                            "<https://github.com/cds-snc/canadalogin-release-system/"
+                            "actions/runs/123|View the release pipeline run>"
+                        )
+                    }
+                }
+            ]
+        },
+    )
+    def test_verify_failure_alert_accepts_deploy_notification_text(
+        self, aws_json
+    ) -> None:
+        context = VerificationContext(
+            resources={"notification_capture_table": "notifications"},
+            release_sha="a" * 40,
+            account_id="429694360874",
+            region="ca-central-1",
+            environment="acceptance-deploy-failure",
+            expected_result="failure",
+            pipeline_result="failure",
+            required_builds_result="success",
+            deploy_result="failure",
+            repository="cds-snc/canadalogin-release-system",
+            run_id="123",
+        )
+
+        verify_failure_alert(context, "deploy")
+
+        aws_json.assert_called_once_with(
+            "dynamodb", "scan", "--table-name", "notifications"
+        )
 
     @patch("acceptance.support.verify.command", return_value="a" * 40)
     @patch(
