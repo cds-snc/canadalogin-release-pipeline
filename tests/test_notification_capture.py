@@ -31,6 +31,12 @@ class NotificationCaptureTest(unittest.TestCase):
     def setUp(self) -> None:
         self.module = load_notification_capture()
 
+    def test_reuses_initialized_client(self) -> None:
+        client = Mock()
+
+        with patch.object(self.module, "client", client):
+            self.assertIs(self.module._client(), client)
+
     def test_stores_body_with_thirty_minute_expiry(self) -> None:
         client = Mock()
         with (
