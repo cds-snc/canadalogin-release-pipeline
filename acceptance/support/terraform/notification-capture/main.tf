@@ -18,6 +18,11 @@ resource "aws_dynamodb_table" "notifications" {
     name = "id"
     type = "S"
   }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
 }
 
 resource "aws_iam_role" "function" {

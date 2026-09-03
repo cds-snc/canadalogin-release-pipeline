@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 
-from acceptance.catalog import AcceptanceTest, ROOT, SRC
+from acceptance.catalog import ROOT, SRC, AcceptanceTest
 
 
 def run_verifier(
