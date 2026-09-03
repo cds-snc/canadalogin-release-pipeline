@@ -253,7 +253,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.deployment_matrix) }}
-    uses: ./.github/workflows/release__deploy-environment.yml
+    uses: ./.github/workflows/release__deploy.yml
     with:
       config-path: ${{ inputs.config-path }}
       aws-account-id: ${{ inputs.aws-account-id }}

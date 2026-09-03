@@ -103,7 +103,7 @@ class WorkflowContractTest(unittest.TestCase):
         self,
     ) -> None:
         workflow = (
-            ROOT / ".github" / "workflows" / "release__deploy-environment.yml"
+            ROOT / ".github" / "workflows" / "release__deploy.yml"
         ).read_text()
 
         self.assertIn(
@@ -117,7 +117,7 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_deployment_workflow_has_no_lifecycle_hook_steps(self) -> None:
         workflow = (
-            ROOT / ".github" / "workflows" / "release__deploy-environment.yml"
+            ROOT / ".github" / "workflows" / "release__deploy.yml"
         ).read_text()
 
         self.assertNotIn("canadalogin-release hook", workflow)
@@ -164,7 +164,7 @@ class WorkflowContractTest(unittest.TestCase):
             ROOT / ".github" / "workflows" / "acceptance__run-one-acceptance-test.yml"
         ).read_text()
         build = (ROOT / ".github" / "workflows" / "release__build.yml").read_text()
-        deploy = (ROOT / ".github" / "workflows" / "release__deploy-environment.yml").read_text()
+        deploy = (ROOT / ".github" / "workflows" / "release__deploy.yml").read_text()
 
         self.assertIn("name: acceptance-tests\n      deployment: false", acceptance)
         self.assertEqual(acceptance_test.count("deployment: false"), 2)
@@ -246,7 +246,7 @@ class WorkflowContractTest(unittest.TestCase):
         ).read_text()
         build = (ROOT / ".github" / "workflows" / "release__build.yml").read_text()
         deployment = (
-            ROOT / ".github" / "workflows" / "release__deploy-environment.yml"
+            ROOT / ".github" / "workflows" / "release__deploy.yml"
         ).read_text()
 
         release = acceptance_test.split("\n  release:\n", 1)[1].split(
