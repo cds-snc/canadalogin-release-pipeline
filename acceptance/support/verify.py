@@ -373,7 +373,11 @@ def verify_failure_alert(context: VerificationContext, action: str) -> None:
     items = document.get("Items")
     require(isinstance(items, list), "Notification capture returned invalid items.")
     workflow_url = f"actions/runs/{context.run_id}"
-    expected_text = f"failed to {action} for"
+    expected_texts = {
+        "build": "failed to build for",
+        "deploy": "failed to deploy to",
+    }
+    expected_text = expected_texts.get(action, f"failed to {action} for")
     for item in items:
         if not isinstance(item, dict):
             continue
