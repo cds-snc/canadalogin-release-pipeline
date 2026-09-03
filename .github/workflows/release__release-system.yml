@@ -28,7 +28,7 @@ on:
 
 jobs:
   release:
-    uses: ./.github/workflows/internal-release-system-interface.yml
+    uses: ./.github/workflows/release__internal-release-system-interface.yml
     with:
       config-path: ${{ inputs.config-path }}
       environment: ${{ inputs.environment }}
