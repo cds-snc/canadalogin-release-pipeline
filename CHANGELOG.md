@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.3](https://github.com/cds-snc/canadalogin-release-system/compare/v1.2.2...v1.2.3) (2026-09-03)
+
+
+### Bug Fixes
+
+* remove some unnecessary docs ([#73](https://github.com/cds-snc/canadalogin-release-system/issues/73)) ([b76c31b](https://github.com/cds-snc/canadalogin-release-system/commit/b76c31bd4aa9be4e25bcca891f7778b526756499))
+* split CI validation workflows ([#75](https://github.com/cds-snc/canadalogin-release-system/issues/75)) ([e9cfe93](https://github.com/cds-snc/canadalogin-release-system/commit/e9cfe932d275ba82432df29cfab924000910fcba))
+
+
+### Miscellaneous Chores
+
+* namespace GitHub workflows ([#76](https://github.com/cds-snc/canadalogin-release-system/issues/76)) ([bec9e2f](https://github.com/cds-snc/canadalogin-release-system/commit/bec9e2fe8fd4f9a3dd2044b200b0eb154613dd8d))
+* rename deploy workflow ([#78](https://github.com/cds-snc/canadalogin-release-system/issues/78)) ([775a688](https://github.com/cds-snc/canadalogin-release-system/commit/775a688a005fcdc1d08f58a807ce30e992f5e1e1))
+
+
+### Documentation
+
+* Document config.py ([#79](https://github.com/cds-snc/canadalogin-release-system/issues/79)) ([081ac4b](https://github.com/cds-snc/canadalogin-release-system/commit/081ac4bcfe2901bbcc5ac93965b0d4c104e5be62))
+* document deployment preflight checks ([#77](https://github.com/cds-snc/canadalogin-release-system/issues/77)) ([40a32b0](https://github.com/cds-snc/canadalogin-release-system/commit/40a32b014d3891d5eae8fc7bc64b052466b60aab))
+
 ## [1.2.2](https://github.com/cds-snc/canadalogin-release-system/compare/v1.2.1...v1.2.2) (2026-09-03)
 
 
