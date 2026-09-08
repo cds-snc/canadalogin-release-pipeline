@@ -45,6 +45,10 @@ on:
         required: false
         default: false
         type: boolean
+      planning-event-name:
+        required: false
+        default: ""
+        type: string
       rebuild:
         required: false
         default: false
@@ -93,9 +97,10 @@ jobs:
       - name: Validate configuration and plan jobs
         id: plan
         env:
-          BEFORE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before || '' }}
+          BEFORE_SHA: ${{ inputs.planning-event-name && '' || (github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before || '') }}
           CONFIG_PATH: ${{ inputs.config-path }}
           MANUAL_ENVIRONMENT: ${{ inputs.environment }}
+          PLANNING_EVENT_NAME: ${{ inputs.planning-event-name || github.event_name }}
           PLAN_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           RELEASE_FORCE_DEPLOY: ${{ inputs.force-redeploy }}
           RELEASE_REBUILD: ${{ inputs.rebuild }}
@@ -104,7 +109,7 @@ jobs:
           plan_outputs="$(mktemp)"
           GITHUB_OUTPUT="$plan_outputs" canadalogin-release plan \
             --config "$CONFIG_PATH" \
-            --event-name "$GITHUB_EVENT_NAME" \
+            --event-name "$PLANNING_EVENT_NAME" \
             --sha "$PLAN_SHA" \
             --before-sha "$BEFORE_SHA" \
             --environment "$MANUAL_ENVIRONMENT" \
@@ -121,7 +126,7 @@ jobs:
   deployment-impact:
     name: Comment on deployment impact
     needs: plan
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && inputs.planning-event-name == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
