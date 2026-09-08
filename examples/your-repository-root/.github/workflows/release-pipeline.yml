@@ -1,0 +1,46 @@
+# This file should be copied exactly as-is to your repository root.
+
+name: Release pipeline
+
+env:
+  # We're using GitHub's immutable releases feature to ensure tags
+  # cannot be modified after creation for security.
+  RELEASE_SYSTEM_VERSION: 1.2.3
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment name, or "all"
+        required: true
+        default: dev
+        type: string
+      force-redeploy:
+        description: Deploy to all environments, even if the version hasn't changed.
+        required: false
+        default: false
+        type: boolean
+      rebuild:
+        description: Rebuild all artifacts, even if they already exist.
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    uses: cds-snc/canadalogin-release-system/.github/workflows/release-system.yml@v${{ env.RELEASE_SYSTEM_VERSION }}
+    with:
+      environment: ${{ inputs.environment || '' }}
+      force-redeploy: ${{ inputs.force-redeploy || false }}
+      rebuild: ${{ inputs.rebuild || false }}
+    secrets: inherit
