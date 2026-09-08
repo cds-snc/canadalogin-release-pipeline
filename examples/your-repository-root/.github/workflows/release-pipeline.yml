@@ -1,6 +1,4 @@
 name: Release pipeline
-env:
-  RELEASE_PIPELINE_VERSION: 1.2.4
 'on':
   push:
     branches:
@@ -32,9 +30,7 @@ permissions:
   id-token: write
 jobs:
   release:
-    uses: >-
-      cds-snc/canadalogin-release-pipeline/.github/workflows/release-pipeline.yml@v${{
-      env.RELEASE_PIPELINE_VERSION }}
+    uses: cds-snc/canadalogin-release-pipeline/.github/workflows/release-pipeline.yml@v1.2.4
     with:
       environment: ${{ inputs.environment || '' }}
       force-redeploy: ${{ inputs.force-redeploy || false }}
