@@ -89,6 +89,17 @@ class WorkflowContractTest(unittest.TestCase):
             acceptance_test,
         )
         self.assertIn("pipeline_id: ${{ inputs.pipeline-id-prefix }}-${{ github.run_id }}", acceptance_test)
+        self.assertIn("planning-event-name: workflow_dispatch", acceptance_test)
+        self.assertIn("planning-event-name:", pipeline)
+        self.assertIn(
+            "PLANNING_EVENT_NAME: ${{ inputs.planning-event-name || github.event_name }}",
+            pipeline,
+        )
+        self.assertIn('--event-name "$PLANNING_EVENT_NAME"', pipeline)
+        self.assertIn(
+            "github.event_name == 'pull_request' && inputs.planning-event-name == ''",
+            pipeline,
+        )
         self.assertIn(
             "aws-region: ${{ inputs.aws-region || matrix.aws_region }}", pipeline
         )

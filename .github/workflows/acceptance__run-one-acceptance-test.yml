@@ -159,6 +159,7 @@ jobs:
       environment: ${{ inputs.environment }}
       github-environment: ${{ inputs.github-environment }}
       rebuild: ${{ inputs.rebuild }}
+      planning-event-name: workflow_dispatch
       release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
       alert-webhook-override: ${{ needs.infrastructure.outputs.alert-webhook-override }}
       allow-failure: ${{ inputs.expected-release-result == 'failure' }}
