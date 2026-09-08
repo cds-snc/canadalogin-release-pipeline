@@ -150,7 +150,7 @@ jobs:
       issues: write
       pull-requests: write
       statuses: write
-    uses: ./.github/workflows/release__internal-release-system-interface.yml
+    uses: ./.github/workflows/release__internal-release-pipeline-interface.yml
     with:
       config-path: ${{ inputs.config-path }}
       aws-account-id: ${{ inputs.aws-account-id }}

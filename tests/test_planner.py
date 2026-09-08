@@ -8,13 +8,13 @@ from pathlib import Path
 from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.pipeline.planner import create_plan
 
-EXAMPLES = Path(__file__).parents[1] / "examples"
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class PlannerTest(unittest.TestCase):
     def config(self, repository: str) -> PipelineConfig:
         return PipelineConfig.load(
-            EXAMPLES / repository / "release-pipeline-configuration.yml"
+            FIXTURES / repository / "release-pipeline-configuration.yml"
         )
 
     def repository_with_version(

@@ -13,7 +13,7 @@ from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.pipeline.build import execute_build
 from canadalogin_release.support.runtime import RuntimeContext
 
-EXAMPLES = Path(__file__).parents[1] / "examples"
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class RecordingRunner:
@@ -43,7 +43,7 @@ class RecordingRunner:
 class BuildTest(unittest.TestCase):
     def config(self, repository: str) -> PipelineConfig:
         return PipelineConfig.load(
-            EXAMPLES / repository / "release-pipeline-configuration.yml"
+            FIXTURES / repository / "release-pipeline-configuration.yml"
         )
 
     def context(

@@ -1,8 +1,8 @@
-# CanadaLogin release system
+# CanadaLogin release pipeline
 
-This repository centralizes the release system used by CanadaLogin applications. A caller owns two small files:
+This repository centralizes the release pipeline used by CanadaLogin applications. A caller owns two small files:
 
-1. `.github/workflows/release__release-system.yml`, which calls the versioned public reusable workflow.
+1. `.github/workflows/release__release-pipeline.yml`, which calls the versioned public reusable workflow.
 2. `.github/release-pipeline-configuration.yml`, which declares the application profile, environment list, and optional hooks.
 
 
@@ -43,16 +43,7 @@ The release pipeline uses files in `.deployed_versions/` to track the DESIRED ap
 
 ### 3. Invoke the release pipeline from GitHub Actions
 
-Copy [the caller workflow](examples/caller/release-system.yml) to `.github/workflows/release__release-system.yml`. Copy the closest application configuration from [examples](examples) to `.github/release-pipeline-configuration.yml`, then update its resource references and commands.
-
-The caller examples pin a semver release. Optionally replace the release tag with a commit SHA for maximum immutability guarantees.
-
-```yaml
-jobs:
-  release:
-    uses: cds-snc/canadalogin-release-system/.github/workflows/release__release-system.yml@v1.0.6
-    secrets: inherit
-```
+Follow the instructions in the [configuration example](examples/README.md) to set up both necessary files in your repository.
 
 Read the [configuration guide](/docs/configuration.md) for more information on the `release-pipeline-configuration.yml` file.
 
@@ -75,5 +66,4 @@ Every required build must pass before any environment begins deployment. Compone
 
 ## Configuration examples
 
-- [Manage application](examples/canadalogin-user-selfservice-webapp/release-pipeline-configuration.yml)
-- [Static website](examples/canadalogin-static-website/release-pipeline-configuration.yml)
+There is a configuration example [here](examples/README.md).

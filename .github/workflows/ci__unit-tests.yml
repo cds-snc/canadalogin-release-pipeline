@@ -1,4 +1,4 @@
-# This workflow runs unit tests for the CanadaLogin release system.
+# This workflow runs unit tests for the CanadaLogin release pipeline.
 
 name: Unit tests
 

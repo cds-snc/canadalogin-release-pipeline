@@ -44,19 +44,19 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_deployment_requires_build_result_and_runs_independently(self) -> None:
         workflow = (
-            ROOT / ".github" / "workflows" / "release__release-system.yml"
+            ROOT / ".github" / "workflows" / "release__release-pipeline.yml"
         ).read_text()
         pipeline = (
             ROOT
             / ".github"
             / "workflows"
-            / "release__internal-release-system-interface.yml"
+            / "release__internal-release-pipeline-interface.yml"
         ).read_text()
         deployment = pipeline.split("\n  deploy:\n", 1)[1]
 
-        self.assertIn("name: CanadaLogin release system\n", workflow)
+        self.assertIn("name: CanadaLogin release pipeline\n", workflow)
         self.assertIn(
-            "name: CanadaLogin internal release system interface\n", pipeline
+            "name: CanadaLogin internal release pipeline interface\n", pipeline
         )
         self.assertIn(
             "description: Force deployments to all enabled environments.", workflow
@@ -85,7 +85,7 @@ class WorkflowContractTest(unittest.TestCase):
             (ROOT / ".github" / "workflows" / "acceptance-release.yml").exists()
         )
         self.assertIn(
-            "uses: ./.github/workflows/release__internal-release-system-interface.yml",
+            "uses: ./.github/workflows/release__internal-release-pipeline-interface.yml",
             acceptance_test,
         )
         self.assertIn("pipeline_id: ${{ inputs.pipeline-id-prefix }}-${{ github.run_id }}", acceptance_test)
@@ -128,7 +128,7 @@ class WorkflowContractTest(unittest.TestCase):
             ROOT
             / ".github"
             / "workflows"
-            / "release__internal-release-system-interface.yml"
+            / "release__internal-release-pipeline-interface.yml"
         ).read_text()
 
         self.assertIn('plan_outputs="$(mktemp)"', workflow)
@@ -231,6 +231,11 @@ class WorkflowContractTest(unittest.TestCase):
                     "type": "toml",
                     "path": "pyproject.toml",
                     "jsonpath": "$.project.version",
+                    },
+                    {
+                        "type": "yaml",
+                        "path": "examples/your-repository-root/.github/workflows/release-pipeline.yml",
+                        "jsonpath": "$.env.RELEASE_PIPELINE_VERSION",
                 }
             ],
         )
@@ -242,7 +247,7 @@ class WorkflowContractTest(unittest.TestCase):
             ROOT / ".github" / "workflows" / "acceptance__run-one-acceptance-test.yml"
         ).read_text()
         pipeline = (
-            ROOT / ".github" / "workflows" / "release__internal-release-system-interface.yml"
+            ROOT / ".github" / "workflows" / "release__internal-release-pipeline-interface.yml"
         ).read_text()
         build = (ROOT / ".github" / "workflows" / "release__build.yml").read_text()
         deployment = (

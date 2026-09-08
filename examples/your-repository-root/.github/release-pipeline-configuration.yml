@@ -1,0 +1,30 @@
+# This is a sample configuration file, generated for the profile management app.
+# This needs to be catered to the specific application.
+# See the configuration guide for more information.
+
+schema_version: 2
+application: profile-management
+profile: spa-ecs
+
+environments: [dev, test, staging, prod]
+
+frontend:
+  environment:
+    VITE_BACKEND_API_URL:
+      var: VITE_BACKEND_API_URL
+    VITE_GOOGLE_ANALYTICS_ID:
+      var: VITE_GOOGLE_ANALYTICS_ID
+    VITE_ENVIRONMENT: "{environment}"
+    VITE_RELEASE_TAG: "{release_version}"
+  invalidation_paths: [/index.html, /assets/*, /mockServiceWorker.js]
+
+backend:
+  dockerfile: backend/Dockerfile
+  build_args:
+    RELEASE_TAG: "{release_version}"
+    BUILD_TIMESTAMP: "{build_timestamp}"
+    ECR_REPOSITORY: "{repository}:{sha}"
+    GITHUB_REF: "{github_ref}"
+
+load_tests:
+  enabled: true

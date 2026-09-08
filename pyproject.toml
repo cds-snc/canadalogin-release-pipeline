@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "canadalogin-release-system"
+name = "canadalogin-release-pipeline"
 version = "1.2.3"
 description = "Shared release pipeline tooling for CanadaLogin applications"
 requires-python = ">=3.11"

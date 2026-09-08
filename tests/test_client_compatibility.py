@@ -6,7 +6,7 @@ from pathlib import Path
 from canadalogin_release.config import PipelineConfig
 from canadalogin_release.pipeline.planner import create_plan
 
-EXAMPLES = Path(__file__).parents[1] / "examples"
+FIXTURES = Path(__file__).parent / "fixtures"
 CLIENT_SHAPES = {
     "canadalogin-user-selfservice-webapp": {
         "builds": ("frontend", "backend", "load-test"),
@@ -28,7 +28,7 @@ CLIENT_SHAPES = {
 class ClientCompatibilityTest(unittest.TestCase):
     def config(self, repository: str) -> PipelineConfig:
         return PipelineConfig.load(
-            EXAMPLES / repository / "release-pipeline-configuration.yml"
+            FIXTURES / repository / "release-pipeline-configuration.yml"
         )
 
     @staticmethod

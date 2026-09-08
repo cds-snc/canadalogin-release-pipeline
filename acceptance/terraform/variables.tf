@@ -13,5 +13,5 @@ variable "aws_region" {
 variable "github_oidc_subject_prefix" {
   description = "Immutable GitHub OIDC subject prefix allowed to assume the acceptance roles."
   type        = string
-  default     = "repo:cds-snc@30166251/canadalogin-release-system@1337624227"
+  default     = "repo:cds-snc@30166251/canadalogin-release-pipeline@1337624227"
 }

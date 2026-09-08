@@ -207,16 +207,5 @@ events:
         with self.assertRaisesRegex(ConfigError, "repository_dispatch.refresh"):
             self.load(invalid)
 
-    def test_all_current_repository_examples_are_valid(self) -> None:
-        examples = Path(__file__).parents[1] / "examples"
-        paths = sorted(examples.glob("*/release-pipeline-configuration.yml"))
-
-        self.assertEqual(len(paths), 2)
-        for path in paths:
-            with self.subTest(repository=path.parent.name):
-                config = PipelineConfig.load(path)
-                self.assertTrue(config.builds)
-                self.assertTrue(config.deployments)
-
 if __name__ == "__main__":
     unittest.main()
