@@ -1,0 +1,20 @@
+schema_version: 2
+application: static-website
+profile: static-site
+
+environments: [dev, test, staging, prod]
+
+site:
+  environment:
+    WEBSITE_ENVIRONMENT: "{environment}"
+    GOOGLE_ANALYTICS_ID:
+      var: GOOGLE_ANALYTICS_ID
+  targets:
+    en:
+      invalidation_paths: ["/*", "/en/*", "/en/index.html"]
+    fr:
+      invalidation_paths: ["/*", "/fr/*", "/fr/index.html"]
+
+events:
+  repository_dispatch:
+    gc-articles-update: [dev]

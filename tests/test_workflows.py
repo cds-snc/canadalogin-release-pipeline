@@ -231,6 +231,11 @@ class WorkflowContractTest(unittest.TestCase):
                     "type": "toml",
                     "path": "pyproject.toml",
                     "jsonpath": "$.project.version",
+                    },
+                    {
+                        "type": "yaml",
+                        "path": "examples/your-repository-root/.github/workflows/release-pipeline.yml",
+                        "jsonpath": "$.env.RELEASE_PIPELINE_VERSION",
                 }
             ],
         )

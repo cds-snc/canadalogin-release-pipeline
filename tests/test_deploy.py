@@ -21,7 +21,7 @@ from canadalogin_release.pipeline.deploy import (
 )
 from canadalogin_release.support.runtime import RuntimeContext
 
-EXAMPLES = Path(__file__).parents[1] / "examples"
+FIXTURES = Path(__file__).parent / "fixtures"
 
 MULTI_SERVICE_CONFIG = """
 schema_version: 2
@@ -70,7 +70,7 @@ class AwsRunner:
 class DeployTest(unittest.TestCase):
     def config(self, repository: str) -> PipelineConfig:
         return PipelineConfig.load(
-            EXAMPLES / repository / "release-pipeline-configuration.yml"
+            FIXTURES / repository / "release-pipeline-configuration.yml"
         )
 
     def config_from_text(self, content: str) -> PipelineConfig:

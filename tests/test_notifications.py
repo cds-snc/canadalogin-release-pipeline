@@ -17,7 +17,7 @@ from canadalogin_release.integrations.slack_notifications import (
 )
 from canadalogin_release.support.runtime import RuntimeContext
 
-EXAMPLES = Path(__file__).parents[1] / "examples"
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 class NotificationTest(unittest.TestCase):
@@ -34,7 +34,7 @@ class NotificationTest(unittest.TestCase):
 
     def test_schema_two_defaults_use_numbered_alert_slots(self) -> None:
         config = PipelineConfig.load(
-            EXAMPLES
+            FIXTURES
             / "canadalogin-user-selfservice-webapp"
             / "release-pipeline-configuration.yml"
         )
@@ -72,7 +72,7 @@ class NotificationTest(unittest.TestCase):
 
     def test_schema_two_defaults_use_info_webhook(self) -> None:
         config = PipelineConfig.load(
-            EXAMPLES
+            FIXTURES
             / "canadalogin-user-selfservice-webapp"
             / "release-pipeline-configuration.yml"
         )
@@ -164,7 +164,7 @@ class NotificationTest(unittest.TestCase):
 
     def test_failure_names_environment_and_sends_every_alert_webhook(self) -> None:
         config = PipelineConfig.load(
-            EXAMPLES
+            FIXTURES
             / "canadalogin-user-selfservice-webapp"
             / "release-pipeline-configuration.yml"
         )
