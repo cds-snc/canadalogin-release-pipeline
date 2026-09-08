@@ -265,22 +265,39 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("needs.required_builds.outputs.result", pipeline)
         self.assertIn("needs.deploy.outputs.result", pipeline)
 
-    def test_acceptance_github_orchestration_uses_python_commands(self) -> None:
-        command = (
-            ROOT / ".github" / "workflows" / "acceptance__release-pipeline-test-command.yml"
-        ).read_text()
+    def test_acceptance_runs_automatically_only_for_release_please_pull_requests(
+        self,
+    ) -> None:
         suite = (
             ROOT / ".github" / "workflows" / "acceptance__acceptance-tests.yml"
         ).read_text()
+        gate = (
+            ROOT
+            / ".github"
+            / "workflows"
+            / "acceptance__release-pipeline-acceptance-gate.yml"
+        ).read_text()
 
-        self.assertIn("uses: ./actions/setup", command)
-        self.assertIn("acceptance/runner.py request", command)
-        self.assertNotIn("gh api", command)
-        self.assertNotIn("jq ", command)
-        self.assertIn("acceptance/runner.py validate-request", suite)
+        self.assertIn("pull_request:\n    branches: [main]", suite)
+        self.assertIn("types: [opened, reopened, synchronize]", suite)
+        self.assertNotIn("workflow_dispatch", suite)
+        self.assertIn("head.ref == 'release-please--branches--main'", suite)
+        self.assertIn("user.type == 'Bot'", suite)
+        self.assertIn("'autorelease: pending'", suite)
+        self.assertIn("github.event.pull_request.head.sha", suite)
+        self.assertIn("group: canadalogin-release-acceptance-tests", suite)
+        self.assertIn("cancel-in-progress: false", suite)
         self.assertIn("acceptance/runner.py report", suite)
         self.assertNotIn("assert_suite:", suite)
-        self.assertIn("needs: [validate_request, terraform, acceptance]", suite)
+        self.assertIn(
+            "needs: [validate_release_pull_request, terraform, acceptance]", suite
+        )
+        self.assertIn(
+            "if: always() && needs.validate_release_pull_request.result == 'success'",
+            suite,
+        )
+        self.assertIn("context='release-gate'", gate)
+        self.assertIn("post pending 'Waiting for acceptance tests'", gate)
 
 if __name__ == "__main__":
     unittest.main()

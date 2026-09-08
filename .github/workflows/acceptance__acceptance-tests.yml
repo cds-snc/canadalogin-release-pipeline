@@ -1,19 +1,11 @@
-# The top-level orchestration workflow for acceptance tests. This gets
-# kicked off by acceptance__release-pipeline-test-command.yml.
+# The top-level orchestration workflow for release-please acceptance tests.
 
 name: Integration / acceptance tests
 
 on:
-  workflow_dispatch:
-    inputs:
-      release-sha:
-        description: Prospective release-pipeline commit to exercise.
-        required: true
-        type: string
-      pull-request-number:
-        description: Pull request to update when the suite completes.
-        required: true
-        type: string
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
 
 env:
   AWS_ACCOUNT_ID: "429694360874"
@@ -21,6 +13,7 @@ env:
 
 concurrency:
   group: canadalogin-release-acceptance-tests
+  cancel-in-progress: false
 
 permissions:
   actions: read
@@ -31,43 +24,22 @@ permissions:
   statuses: write
 
 jobs:
-  validate_request:
+  validate_release_pull_request:
     name: Validate release pull request
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'release-please--branches--main' &&
+      github.event.pull_request.user.type == 'Bot' &&
+      contains(github.event.pull_request.labels.*.name, 'autorelease: pending')
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
-      - name: Checkout trusted workflow source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          persist-credentials: false
-
-      - name: Set up release tooling
-        uses: ./actions/setup
-
       - name: Validate release-please pull request
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pull-request-number }}
-          RELEASE_SHA: ${{ inputs.release-sha }}
-          REPOSITORY: ${{ github.repository }}
-          WORKFLOW_REF: ${{ github.ref_name }}
-          WORKFLOW_SHA: ${{ github.sha }}
-        run: >-
-          python3 acceptance/runner.py validate-request
-          --pull-request "$PR_NUMBER"
-          --release-sha "$RELEASE_SHA"
-          --repository "$REPOSITORY"
-          --workflow-ref "$WORKFLOW_REF"
-          --workflow-sha "$WORKFLOW_SHA"
-          --api-url "$GITHUB_API_URL"
+        run: true
 
   discover:
     name: Discover acceptance tests
-    needs: validate_request
-    if: needs.validate_request.result == 'success'
+    needs: validate_release_pull_request
+    if: needs.validate_release_pull_request.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -75,7 +47,7 @@ jobs:
       - name: Checkout prospective release
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.release-sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Set up release tooling
@@ -90,8 +62,8 @@ jobs:
 
   terraform:
     name: Apply acceptance infrastructure
-    needs: [validate_request, discover]
-    if: needs.validate_request.result == 'success' && needs.discover.result == 'success'
+    needs: [validate_release_pull_request, discover]
+    if: needs.validate_release_pull_request.result == 'success' && needs.discover.result == 'success'
     runs-on: ubuntu-latest
     environment:
       name: acceptance-tests
@@ -100,13 +72,13 @@ jobs:
       - name: Checkout prospective release
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Confirm prospective SHA
         env:
-          EXPECTED_SHA: ${{ inputs.release-sha }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
         run: test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Configure AWS credentials
@@ -161,7 +133,7 @@ jobs:
     uses: ./.github/workflows/acceptance__run-one-acceptance-test.yml
     with:
       test-id: ${{ matrix.id }}
-      release-sha: ${{ inputs.release-sha }}
+      release-sha: ${{ github.event.pull_request.head.sha }}
       config-path: ${{ matrix.config_path }}
       terraform-directory: ${{ matrix.terraform_directory }}
       environment: ${{ matrix.environment }}
@@ -177,8 +149,8 @@ jobs:
 
   report:
     name: Report integration / acceptance suite result
-    if: always()
-    needs: [validate_request, terraform, acceptance]
+    if: always() && needs.validate_release_pull_request.result == 'success'
+    needs: [validate_release_pull_request, terraform, acceptance]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -197,12 +169,12 @@ jobs:
       - name: Publish acceptance result
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ inputs.release-sha }}
+          RELEASE_SHA: ${{ github.event.pull_request.head.sha }}
           REPOSITORY: ${{ github.repository }}
-          VALIDATION_RESULT: ${{ needs.validate_request.result }}
+          VALIDATION_RESULT: ${{ needs.validate_release_pull_request.result }}
           TERRAFORM_RESULT: ${{ needs.terraform.result }}
           ACCEPTANCE_RESULT: ${{ needs.acceptance.result }}
-          PR_NUMBER: ${{ inputs.pull-request-number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: >-
           python3 acceptance/runner.py report
