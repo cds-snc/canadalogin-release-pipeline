@@ -67,7 +67,7 @@ class AcceptanceVerificationTests(unittest.TestCase):
                         "S": (
                             ":x: release pipeline acceptance deployment failure "
                             "failed to deploy to `acceptance-deploy-failure`.\n\n"
-                            "<https://github.com/cds-snc/canadalogin-release-system/"
+                            "<https://github.com/cds-snc/canadalogin-release-pipeline/"
                             "actions/runs/123|View the release pipeline run>"
                         )
                     }
@@ -88,7 +88,7 @@ class AcceptanceVerificationTests(unittest.TestCase):
             pipeline_result="failure",
             required_builds_result="success",
             deploy_result="failure",
-            repository="cds-snc/canadalogin-release-system",
+            repository="cds-snc/canadalogin-release-pipeline",
             run_id="123",
         )
 

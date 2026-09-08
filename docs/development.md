@@ -1,10 +1,10 @@
 # Development
 
-This document covers local development and the checks used by the release system.
+This document covers local development and the checks used by the release pipeline.
 
 ## Setup
 
-The release system requires Python 3.11 or later. Create a virtual environment and
+The release pipeline requires Python 3.11 or later. Create a virtual environment and
 install the package from the repository root:
 
 ```sh

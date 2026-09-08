@@ -5,7 +5,7 @@ name: Release pipeline
 env:
   # We're using GitHub's immutable releases feature to ensure tags
   # cannot be modified after creation for security.
-  RELEASE_SYSTEM_VERSION: 1.2.3
+  RELEASE_PIPELINE_VERSION: 1.2.3
 
 on:
   push:
@@ -38,7 +38,7 @@ permissions:
 
 jobs:
   release:
-    uses: cds-snc/canadalogin-release-system/.github/workflows/release-system.yml@v${{ env.RELEASE_SYSTEM_VERSION }}
+    uses: cds-snc/canadalogin-release-pipeline/.github/workflows/release-pipeline.yml@v${{ env.RELEASE_PIPELINE_VERSION }}
     with:
       environment: ${{ inputs.environment || '' }}
       force-redeploy: ${{ inputs.force-redeploy || false }}

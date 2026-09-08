@@ -1,6 +1,6 @@
-# This is the end-user-facing workflow for the CanadaLogin release system. It provides a simple interface for
+# This is the end-user-facing workflow for the CanadaLogin release pipeline. It provides a simple interface for
 # manual deployments and rebuilds. The bulk of the logic is implemented in src/.
-name: CanadaLogin release system
+name: CanadaLogin release pipeline
 
 on:
   workflow_call:
@@ -28,7 +28,7 @@ on:
 
 jobs:
   release:
-    uses: ./.github/workflows/release__internal-release-system-interface.yml
+    uses: ./.github/workflows/release__internal-release-pipeline-interface.yml
     with:
       config-path: ${{ inputs.config-path }}
       environment: ${{ inputs.environment }}

@@ -8,7 +8,7 @@
     {
       "type": "yaml",
       "path": "examples/your-repository-root/.github/workflows/release-pipeline.yml",
-      "jsonpath": "$.env.RELEASE_SYSTEM_VERSION"
+      "jsonpath": "$.env.RELEASE_PIPELINE_VERSION"
     }
   ],
   "release-type": "simple",
