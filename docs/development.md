@@ -55,7 +55,7 @@ PYTHONPATH=src python3 acceptance/runner.py validate --all
 ```
 
 Before merging a release-please pull request, the live acceptance suite must pass.
-CI will prevent the pull request from merging without the required status.
-
-To request the suite, comment exactly `!test` on the open release-please pull
-request targeting `main`.
+The suite starts automatically when release-please creates or updates its open
+pull request targeting `main`. The `main` branch protection rule must require
+the `release-gate` status, which only passes after the suite passes for the
+current commit.
