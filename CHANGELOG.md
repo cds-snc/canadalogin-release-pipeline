@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.4](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.2.3...v1.2.4) (2026-09-08)
+
+
+### Bug Fixes
+
+* Documentation and rename ([#80](https://github.com/cds-snc/canadalogin-release-pipeline/issues/80)) ([84ec23d](https://github.com/cds-snc/canadalogin-release-pipeline/commit/84ec23df75d1cb07d4ce29c778ff981c53d2e221))
+* plan acceptance runs as manual rebuilds ([#83](https://github.com/cds-snc/canadalogin-release-pipeline/issues/83)) ([90ce6ef](https://github.com/cds-snc/canadalogin-release-pipeline/commit/90ce6ef01eac31543151c18bb4c99e918ff6e103))
+
+
+### Continuous Integration
+
+* run acceptance tests automatically for release PRs ([#82](https://github.com/cds-snc/canadalogin-release-pipeline/issues/82)) ([083d3e2](https://github.com/cds-snc/canadalogin-release-pipeline/commit/083d3e2b27ee750e8ba599ecf887ceef8395f05c))
+
 ## [1.2.3](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.2.2...v1.2.3) (2026-09-03)
 
 

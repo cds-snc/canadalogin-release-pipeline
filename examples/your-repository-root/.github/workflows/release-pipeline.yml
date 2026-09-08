@@ -1,17 +1,13 @@
-# This file should be copied exactly as-is to your repository root.
-
 name: Release pipeline
-
 env:
-  # We're using GitHub's immutable releases feature to ensure tags
-  # cannot be modified after creation for security.
-  RELEASE_PIPELINE_VERSION: 1.2.3
-
-on:
+  RELEASE_PIPELINE_VERSION: 1.2.4
+'on':
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       environment:
@@ -29,16 +25,16 @@ on:
         required: false
         default: false
         type: boolean
-
 permissions:
   contents: write
   issues: write
   pull-requests: write
   id-token: write
-
 jobs:
   release:
-    uses: cds-snc/canadalogin-release-pipeline/.github/workflows/release-pipeline.yml@v${{ env.RELEASE_PIPELINE_VERSION }}
+    uses: >-
+      cds-snc/canadalogin-release-pipeline/.github/workflows/release-pipeline.yml@v${{
+      env.RELEASE_PIPELINE_VERSION }}
     with:
       environment: ${{ inputs.environment || '' }}
       force-redeploy: ${{ inputs.force-redeploy || false }}
