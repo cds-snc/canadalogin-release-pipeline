@@ -134,6 +134,19 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("canadalogin-release hook", workflow)
         self.assertNotIn("expect-health-check-failure", workflow)
 
+    def test_migrations_gate_all_deployments_after_all_preflights(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release__deploy.yml").read_text()
+        migration_index = workflow.index("- name: Run database migrations")
+        for name in ("Preflight S3 artifacts", "Preflight ECR images and ECS services"):
+            self.assertLess(workflow.index(f"- name: {name}"), migration_index)
+        for name in ("Deploy S3 and CloudFront resources", "Deploy ECS services"):
+            self.assertGreater(workflow.index(f"- name: {name}"), migration_index)
+        migration = workflow[migration_index:].split("\n      - name:", 1)[0]
+        self.assertIn("canadalogin-release migrate-ecs", migration)
+        self.assertNotIn("continue-on-error", migration)
+        self.assertNotIn("always()", migration)
+        self.assertIn("steps.migrate-ecs.outcome == 'failure'", workflow)
+
     def test_plan_workflow_formats_build_and_deployment_matrices(self) -> None:
         workflow = (
             ROOT

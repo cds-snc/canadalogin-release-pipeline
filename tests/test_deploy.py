@@ -51,6 +51,7 @@ class AwsRunner:
         unset_environment: Sequence[str] = (),
         check: bool = True,
         log_output: bool = True,
+        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         command = tuple(arguments)
         self.commands.append(command)

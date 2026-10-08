@@ -129,6 +129,35 @@ class PipelineConfigTest(unittest.TestCase):
                 )
             )
 
+    def test_backend_migrations_default_off_and_opt_in(self) -> None:
+        self.assertFalse(self.load().deployments[1].migrations)
+        for profile in ("spa-ecs", "ecs-service"):
+            with self.subTest(profile=profile):
+                config = self.load(
+                    BASE_CONFIG.replace(
+                        "profile: spa-ecs", f"profile: {profile}"
+                    ).replace("backend:\n", "backend:\n    migrations: true\n")
+                )
+                self.assertTrue(config.deployments[-1].migrations)
+
+    def test_backend_migrations_requires_boolean(self) -> None:
+        for value in ('"true"', "1", "null", "{}", "[]"):
+            with (
+                self.subTest(value=value),
+                self.assertRaisesRegex(
+                    ConfigError, "backend.migrations must be a boolean"
+                ),
+            ):
+                self.load(
+                    BASE_CONFIG.replace(
+                        "backend:\n", f"backend:\n    migrations: {value}\n"
+                    )
+                )
+
+    def test_static_site_rejects_backend_migrations(self) -> None:
+        with self.assertRaisesRegex(ConfigError, "backend is not supported"):
+            self.load(BASE_CONFIG.replace("profile: spa-ecs", "profile: static-site"))
+
     def test_schema_two_rejects_secret_references(self) -> None:
         invalid = SCHEMA_TWO_CONFIG.replace(
             "VITE_BACKEND_API_URL: {var: VITE_BACKEND_API_URL}",

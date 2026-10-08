@@ -33,7 +33,7 @@ The supported profiles are:
 - `spa-ecs`: one frontend build published to S3 and one shared Dockerfile-backed ECS image.
 - `static-site`: one static build published to the declared S3 targets, with one target and CloudFront invalidation per site language or domain.
 
-Backend blocks accept `dockerfile` only. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
+Backend blocks accept `dockerfile`, `build_args`, `services`, and `migrations`. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
 
 Frontend and static-site installs use `npm ci` with the repository lockfile. The pnpm exception uses the declared pnpm version and `--frozen-lockfile`. Node.js defaults to `22`.
 
@@ -60,6 +60,7 @@ Resource names are supplied as GitHub **Variables** on each deployment environme
 | `RELEASE_ECS_<SERVICE>_CLUSTER` | Named ECS service cluster, for example `WEB`. |
 | `RELEASE_ECS_<SERVICE>_SERVICE` | Named ECS service name. |
 | `RELEASE_ECS_<SERVICE>_CONTAINER` | Named ECS container name. |
+| `RELEASE_ECS_MIGRATION_TASK_DEFINITION` | Dedicated migration task definition family or ARN, required when `backend.migrations` is enabled. |
 
 Terraform outputs should be mapped to these stable keys for every enabled environment. A multi-service application publishes one key set per service; a bilingual site publishes one key set per target. Resource values are passed to the release CLI through `RELEASE_PIPELINE_VARS` and are never placed in the application YAML.
 
@@ -247,6 +248,76 @@ image serves multiple ECS services. The generated contract names are
 Before any S3 or ECS mutation, the environment workflow verifies all S3 artifacts and targets, CloudFront distributions, desired ECR image tags and digests, ECS services, task definitions, containers, and SSM parameter templates. Changed ECS task definitions use the verified ECR digest rather than a mutable tag. Structured ECS responses are consumed without writing them to workflow logs. ECS updates retain the current pipeline's `propagate-tags: SERVICE` behavior. Task-definition tags are not copied because the current deployment roles do not grant the additional tag read/write permissions.
 
 After an ECS service update, the deployer polls `describe-services` every 15 seconds for up to 600 seconds. It fails immediately when ECS reports a failed rollout and includes rollout states, reasons, failed-task counts, service counts, and recent service events in the error. The SSM image pointer is updated only after the service is stable.
+
+### Predeployment database migrations
+
+```yaml
+backend:
+  dockerfile: backend/Dockerfile
+  migrations: true
+```
+
+`migrations` is a boolean, defaults to `false`, and is supported by `ecs-service`
+and `spa-ecs`. It is not a configurable command or lifecycle hook. Enabled
+deployments run exactly one task with the fixed command `alembic upgrade head`
+using the candidate backend image's verified ECR digest. The image must contain
+Alembic, its configuration and revisions in its default working directory; its
+entrypoint must honor the supplied command.
+
+All S3/ECS preflights finish before migrations start. A migration must succeed
+before **any** frontend S3/CloudFront or backend ECS deployment begins. It runs
+under the same environment approval and concurrency lock as deployment, using
+the ECS deployment AWS role. Multi-service applications run migrations once,
+using the first service's cluster and `awsvpc` network configuration, not once
+per web/worker service. The task uses on-demand Fargate, one task per invocation.
+Migrations run even when services already use the candidate image; Alembic must
+make repeated `upgrade head` invocations safe.
+
+Each enabled environment must supply `RELEASE_ECS_MIGRATION_TASK_DEFINITION`.
+Terraform owns this dedicated definition, which must:
+
+- Support `FARGATE` with `awsvpc` networking.
+- Have exactly one essential container named `migrations`.
+- Configure migration-specific task and execution roles, environment variables,
+  secrets, and CloudWatch logging. Do not reuse the runtime SQL user's credentials:
+  IDV/Partner Portal runtime users deliberately lack migration privileges.
+- Supply an identity authorized for migration DDL and existing object ownership.
+  IAM authentication needs both task-to-proxy and proxy-to-database grants for
+  that username, plus `rds_iam`. Runtime grants for objects created by the
+  migrator must also be established. Portal's role-management migrations may
+  need additional SQL privileges.
+- Permit database access through the first backend service's subnets and
+  security groups. Both applications load application settings in Alembic, so
+  include required non-database settings as well.
+
+The pipeline copies that definition into a temporary revision, replacing only
+the migration container image and command and removing any HTTP health check
+and container restart policy, so ECS cannot automatically rerun a migration.
+Migration roles, secrets, logging, resources and working directory are preserved;
+runtime service definitions are not used for migration credentials.
+
+The ECS deployment role requires `ecs:DescribeTaskDefinition`,
+`ecs:RegisterTaskDefinition`, `ecs:DeregisterTaskDefinition`, `ecs:RunTask`,
+`ecs:DescribeTasks`, and `ecs:StopTask`, plus narrowly scoped `iam:PassRole` for
+the migration task and execution roles. Infrastructure and application opt-in
+are separate changes; enabling the flag without this contract fails preflight.
+
+The pipeline logs the task ARN, polls every 15 seconds for up to 900 seconds,
+and requires a normal essential-container exit with code zero. Startup failures,
+nonzero or absent exit codes, and timeouts block deployment and send the normal
+failure notification. Task definitions and structured ECS responses are not
+printed; inspect the task's configured CloudWatch logs for migration output.
+Failures/timeouts attempt to stop the task and allow up to 120 seconds to confirm
+termination; AWS subprocesses are individually bounded at 60 seconds. Temporary
+revisions are deregistered after execution. Cleanup failures and ambiguous launch
+responses are warnings and require inspection before
+retrying. A canceled workflow may need manual task/revision cleanup.
+
+There is no automatic migration retry, schema downgrade, reset or database
+rollback. Successful DDL is not reversed when a later deployment fails.
+Migrations must be forward-compatible with the old tasks that remain running.
+The workflow concurrency lock does not serialize independent repositories or
+manual migration invocations against the same database.
 
 ## Repository dispatch
 
