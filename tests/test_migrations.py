@@ -49,16 +49,27 @@ MIGRATION_DEFINITION = {
             "name": "migrations",
             "essential": True,
             "image": f"{REPOSITORY}:old",
-            "command": ["incorrect-command"],
+            "command": ["application-migrate", "--apply"],
             "workingDirectory": "/code",
             "environment": [{"name": "POSTGRES_USER", "value": "migrator"}],
             "secrets": [{"name": "CONFIG", "valueFrom": "secret-arn"}],
             "logConfiguration": {"logDriver": "awslogs"},
-            "healthCheck": {"command": ["CMD", "false"]},
-            "restartPolicy": {"enabled": True},
         }
     ],
 }
+
+
+class MigrationRunner(AwsRunner):
+    def __init__(self, responses=()):
+        super().__init__(responses)
+        self.wait_timeouts = []
+
+    def run(self, arguments, **kwargs):
+        result = super().run(arguments, **kwargs)
+        if "wait" in arguments:
+            self.wait_timeouts.append(kwargs.get("timeout"))
+            result.stderr, result.stdout = result.stdout, ""
+        return result
 
 
 class MigrationTest(unittest.TestCase):
@@ -164,8 +175,8 @@ class MigrationTest(unittest.TestCase):
             }
         )
 
-    def runner(self, *task_responses, **preflight):
-        return AwsRunner(
+    def runner(self, *task_responses, waiter_responses=((0, ""),), **preflight):
+        return MigrationRunner(
             [
                 *self.preflight_responses(**preflight),
                 (
@@ -180,9 +191,10 @@ class MigrationTest(unittest.TestCase):
                         {"tasks": [{"taskArn": "task:migrate"}], "failures": []}
                     ),
                 ),
+                *waiter_responses,
                 *((0, response) for response in task_responses),
                 (0, "{}"),
-                (0, self.task()),
+                (0, ""),
                 (0, "{}"),
             ]
         )
@@ -196,9 +208,8 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(result.changed_resources, ())
 
     def test_success_uses_candidate_digest_and_dedicated_identity(self):
-        runner = self.runner(self.task(status="RUNNING"), self.task())
-        with patch("canadalogin_release.pipeline.deploy.time.sleep"):
-            result = migrate_ecs(self.config(), self.context(), runner=runner)
+        runner = self.runner(self.task())
+        result = migrate_ecs(self.config(), self.context(), runner=runner)
 
         registration = runner.registration
         self.assertEqual(
@@ -209,8 +220,13 @@ class MigrationTest(unittest.TestCase):
         )
         container = registration["containerDefinitions"][0]
         self.assertEqual(container["image"], f"{REPOSITORY}@sha256:candidate")
-        self.assertEqual(container["command"], ["alembic", "upgrade", "head"])
-        for field in ("environment", "secrets", "workingDirectory", "logConfiguration"):
+        for field in (
+            "command",
+            "environment",
+            "secrets",
+            "workingDirectory",
+            "logConfiguration",
+        ):
             self.assertEqual(
                 container[field], MIGRATION_DEFINITION["containerDefinitions"][0][field]
             )
@@ -233,6 +249,17 @@ class MigrationTest(unittest.TestCase):
         )
         self.assertTrue(all(not value for value in runner.log_outputs))
         self.assertEqual(result.changed_resources, ("ecs-migration:cluster/backend",))
+        self.assertEqual(sum("wait" in command for command in runner.commands), 1)
+        self.assertEqual(
+            sum("describe-tasks" in command for command in runner.commands), 1
+        )
+
+    def test_image_default_command_is_preserved(self):
+        definition = copy.deepcopy(MIGRATION_DEFINITION)
+        del definition["containerDefinitions"][0]["command"]
+        runner = self.runner(self.task(), definition=definition)
+        migrate_ecs(self.config(), self.context(), runner=runner)
+        self.assertNotIn("command", runner.registration["containerDefinitions"][0])
 
     def test_multiple_services_run_one_migration_even_for_same_image(self):
         config = self.config(CONFIG + "  services: [web, worker]\n")
@@ -300,6 +327,26 @@ class MigrationTest(unittest.TestCase):
             migrate_ecs(self.config(), self.context(), runner=runner)
         self.assertFalse(any("run-task" in command for command in runner.commands))
 
+    def test_preflight_rejects_health_checks_and_restart_policies(self):
+        for field, value in (
+            ("healthCheck", {}),
+            ("restartPolicy", {"enabled": False}),
+        ):
+            with self.subTest(field=field):
+                definition = copy.deepcopy(MIGRATION_DEFINITION)
+                definition["containerDefinitions"][0][field] = value
+                runner = AwsRunner(self.preflight_responses(definition=definition))
+                with self.assertRaisesRegex(
+                    ConfigError, "healthCheck or restartPolicy"
+                ):
+                    preflight_ecs(self.config(), self.context(), runner=runner)
+                self.assertTrue(
+                    all(
+                        command[2].startswith("describe-")
+                        for command in runner.commands
+                    )
+                )
+
     def test_missing_candidate_digest_fails_before_mutation(self):
         runner = AwsRunner(self.preflight_responses())
         runner.responses[0] = (0, '{"imageDetails": [{"imageTags": ["abc123"]}]}')
@@ -319,7 +366,7 @@ class MigrationTest(unittest.TestCase):
                     migrate_ecs(self.config(), self.context(), runner=runner)
                 self.assertEqual(
                     [command[2] for command in runner.commands[-3:]],
-                    ["stop-task", "describe-tasks", "deregister-task-definition"],
+                    ["stop-task", "wait", "deregister-task-definition"],
                 )
                 self.assertFalse(
                     any("update-service" in command for command in runner.commands)
@@ -348,22 +395,41 @@ class MigrationTest(unittest.TestCase):
                     migrate_ecs(self.config(), self.context(), runner=runner)
                 self.assertEqual(runner.commands[-3][2], "stop-task")
 
-    def test_task_visibility_lag_retries_observation_not_execution(self):
+    def test_waiter_retries_visibility_lag_and_its_fixed_timeout(self):
+        for reason in ("MISSING", "Max attempts exceeded"):
+            with self.subTest(reason=reason):
+                runner = self.runner(
+                    self.task(), waiter_responses=((255, reason), (0, ""))
+                )
+                with patch("canadalogin_release.pipeline.deploy.time.sleep"):
+                    migrate_ecs(self.config(), self.context(), runner=runner)
+                self.assertEqual(
+                    sum("run-task" in command for command in runner.commands), 1
+                )
+                self.assertEqual(
+                    sum("wait" in command for command in runner.commands), 2
+                )
+                self.assertEqual(
+                    sum("describe-tasks" in command for command in runner.commands), 1
+                )
+
+    def test_waiter_retry_uses_only_remaining_deadline(self):
         runner = self.runner(
-            '{"tasks": [], "failures": [{"reason": "MISSING"}]}',
-            '{"tasks": [], "failures": []}',
-            self.task(),
+            self.task(), waiter_responses=((255, "Max attempts exceeded"), (0, ""))
         )
-        with patch("canadalogin_release.pipeline.deploy.time.sleep"):
+        with (
+            patch(
+                "canadalogin_release.pipeline.deploy.time.monotonic",
+                side_effect=[0, 0, 600, 600],
+            ),
+            patch("canadalogin_release.pipeline.deploy.time.sleep"),
+        ):
             migrate_ecs(self.config(), self.context(), runner=runner)
-        self.assertEqual(sum("run-task" in command for command in runner.commands), 1)
-        self.assertEqual(
-            sum("describe-tasks" in command for command in runner.commands), 3
-        )
+        self.assertEqual(runner.wait_timeouts, [900, 300])
 
     def test_stop_is_confirmed_before_releasing_lock(self):
         runner = self.runner(self.task(exit_code=1))
-        runner.responses[-2:-1] = [(0, self.task(status="RUNNING")), (0, self.task())]
+        runner.responses[-2:-1] = [(255, "MISSING"), (0, "")]
         with (
             patch("canadalogin_release.pipeline.deploy.time.sleep"),
             self.assertRaisesRegex(ConfigError, "exit_code=1"),
@@ -373,25 +439,26 @@ class MigrationTest(unittest.TestCase):
             [command[2] for command in runner.commands[-4:]],
             [
                 "stop-task",
-                "describe-tasks",
-                "describe-tasks",
+                "wait",
+                "wait",
                 "deregister-task-definition",
             ],
         )
 
     def test_timeout_stops_task_and_deregisters_revision(self):
-        runner = self.runner(self.task(status="RUNNING"))
+        runner = self.runner(waiter_responses=((255, "Max attempts exceeded"),))
         with (
             patch(
                 "canadalogin_release.pipeline.deploy.time.monotonic",
-                side_effect=[0, 0, 901, 1000, 1000],
+                side_effect=[0, 0, 901, 901, 1000, 1000],
             ),
+            patch("canadalogin_release.pipeline.deploy.time.sleep"),
             self.assertRaisesRegex(ConfigError, "timed out"),
         ):
             migrate_ecs(self.config(), self.context(), runner=runner)
         self.assertEqual(
             [command[2] for command in runner.commands[-3:]],
-            ["stop-task", "describe-tasks", "deregister-task-definition"],
+            ["stop-task", "wait", "deregister-task-definition"],
         )
 
     def test_cleanup_failure_preserves_original_failure(self):
@@ -416,15 +483,7 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(runner.commands[-1][2], "deregister-task-definition")
 
     def test_command_failure_still_cleans_up(self):
-        runner = self.runner()
-        run = runner.run
-
-        def fail_describe(arguments, **kwargs):
-            if "describe-tasks" in arguments:
-                raise CommandError("AWS command failed")
-            return run(arguments, **kwargs)
-
-        runner.run = fail_describe
+        runner = self.runner(waiter_responses=((255, "AccessDeniedException"),))
         with self.assertRaises(CommandError):
             migrate_ecs(self.config(), self.context(), runner=runner)
-        self.assertEqual(runner.commands[-2][2], "stop-task")
+        self.assertEqual(runner.commands[-3][2], "stop-task")

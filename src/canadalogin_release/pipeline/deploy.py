@@ -51,7 +51,6 @@ ECS_MIGRATION_POLL_INTERVAL_SECONDS = 15
 ECS_MIGRATION_CLEANUP_TIMEOUT_SECONDS = 120
 ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS = 60
 MIGRATION_CONTAINER = "migrations"
-MIGRATION_COMMAND = ("alembic", "upgrade", "head")
 
 
 @dataclass(frozen=True)
@@ -606,21 +605,23 @@ def _prepare_migrations(
             ],
         )
         definition = document.get("taskDefinition")
-        if not isinstance(definition, Mapping):
+        if not definition:
             raise ConfigError(
                 f"Migration task definition {reference} returned no definition"
             )
         containers = definition.get("containerDefinitions", [])
         if (
-            not isinstance(containers, list)
-            or len(containers) != 1
-            or not isinstance(containers[0], Mapping)
+            len(containers) != 1
             or containers[0].get("name") != MIGRATION_CONTAINER
             or not containers[0].get("essential", True)
         ):
             raise ConfigError(
                 "Migration task definition must have exactly one essential container "
                 f"named {MIGRATION_CONTAINER!r}"
+            )
+        if "healthCheck" in containers[0] or "restartPolicy" in containers[0]:
+            raise ConfigError(
+                "Migration container must not define healthCheck or restartPolicy"
             )
         if (
             definition.get("networkMode") != "awsvpc"
@@ -631,15 +632,9 @@ def _prepare_migrations(
             raise ConfigError(
                 "Migration task definition requires Fargate, awsvpc and task/execution roles"
             )
-        network = state.network_configuration
-        awsvpc = (
-            network.get("awsvpcConfiguration") if isinstance(network, Mapping) else None
-        )
-        if (
-            not isinstance(awsvpc, Mapping)
-            or not awsvpc.get("subnets")
-            or not awsvpc.get("securityGroups")
-        ):
+        network = state.network_configuration or {}
+        awsvpc = network.get("awsvpcConfiguration", {})
+        if not awsvpc.get("subnets") or not awsvpc.get("securityGroups"):
             raise ConfigError(
                 "Migration source service requires awsvpc subnets and security groups"
             )
@@ -661,7 +656,6 @@ def _run_migration(state: _MigrationState, runner: CommandRunner) -> None:
     revision = _register_task_definition(
         ecs,
         runner,
-        command=MIGRATION_COMMAND,
         timeout=ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS,
     )
     task_arn = None
@@ -694,13 +688,9 @@ def _run_migration(state: _MigrationState, runner: CommandRunner) -> None:
             timeout=ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS,
         )
         tasks = document.get("tasks", [])
-        if (
-            isinstance(tasks, list)
-            and len(tasks) == 1
-            and isinstance(tasks[0], Mapping)
-        ):
+        if len(tasks) == 1:
             task_arn = tasks[0].get("taskArn")
-        if document.get("failures") or not isinstance(task_arn, str) or not task_arn:
+        if document.get("failures") or not task_arn:
             raise ConfigError(
                 f"Migration task could not start: {document.get('failures', [])!r}"
             )
@@ -749,6 +739,7 @@ def _wait_for_migration(
         if stopping
         else ECS_MIGRATION_TIMEOUT_SECONDS
     )
+    task_arguments = ["--cluster", cluster, "--tasks", task_arn]
     deadline = time.monotonic() + timeout
     while True:
         remaining = deadline - time.monotonic()
@@ -756,92 +747,61 @@ def _wait_for_migration(
             raise ConfigError(
                 f"Migration task {task_arn} timed out after {timeout} seconds"
             )
-        document = _json_command(
+        result = _run_aws(
             runner,
-            [
-                "aws",
-                "ecs",
-                "describe-tasks",
-                "--cluster",
-                cluster,
-                "--tasks",
-                task_arn,
-                "--output",
-                "json",
-            ],
-            timeout=min(ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS, remaining),
+            ["aws", "ecs", "wait", "tasks-stopped", *task_arguments],
+            check=False,
+            log_output=False,
+            timeout=remaining,
         )
-        tasks = document.get("tasks", [])
-        failures = document.get("failures", [])
-        invisible = tasks == [] and (
-            failures == []
-            or (
-                isinstance(failures, list)
-                and all(
-                    isinstance(failure, Mapping) and failure.get("reason") == "MISSING"
-                    for failure in failures
-                )
-            )
-        )
-        if invisible:
-            # RunTask and DescribeTasks are eventually consistent. Retry only
-            # observation, never execution of potentially partially applied DDL.
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                time.sleep(min(ECS_MIGRATION_POLL_INTERVAL_SECONDS, remaining))
-            continue
-        if (
-            document.get("failures")
-            or not isinstance(tasks, list)
-            or len(tasks) != 1
-            or not isinstance(tasks[0], Mapping)
-            or tasks[0].get("taskArn") != task_arn
+        if result.returncode == 0:
+            break
+        # Extend the CLI waiter's ten-minute window and tolerate ECS visibility lag.
+        if not any(
+            reason in result.stderr for reason in ("Max attempts exceeded", "MISSING")
         ):
-            raise ConfigError(
-                f"Unable to describe migration task {task_arn}: {document.get('failures', [])!r}"
+            raise CommandError(
+                f"Unable to wait for migration task {task_arn}: {result.stderr.strip()}"
             )
-        task = tasks[0]
-        if task.get("lastStatus") == "STOPPED":
-            if stopping:
-                return
-            containers = task.get("containers", [])
-            migration_containers = (
-                [
-                    container
-                    for container in containers
-                    if isinstance(container, Mapping)
-                    and container.get("name") == MIGRATION_CONTAINER
-                ]
-                if isinstance(containers, list)
-                else []
+        time.sleep(
+            min(
+                ECS_MIGRATION_POLL_INTERVAL_SECONDS, max(0, deadline - time.monotonic())
             )
-            if (
-                len(migration_containers) != 1
-                or type(migration_containers[0].get("exitCode")) is not int
-                or migration_containers[0]["exitCode"] != 0
-                or task.get("stopCode") != "EssentialContainerExited"
-            ):
-                exit_code = (
-                    migration_containers[0].get("exitCode")
-                    if len(migration_containers) == 1
-                    else None
-                )
-                reason = (
-                    migration_containers[0].get("reason")
-                    if len(migration_containers) == 1
-                    else None
-                )
-                raise ConfigError(
-                    f"Migration task {task_arn} failed: exit_code={exit_code}, "
-                    f"stop_code={task.get('stopCode')}, reason={reason or task.get('stoppedReason')}"
-                )
-            return
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise ConfigError(
-                f"Migration task {task_arn} timed out after {timeout} seconds"
-            )
-        time.sleep(min(ECS_MIGRATION_POLL_INTERVAL_SECONDS, remaining))
+        )
+    if stopping:
+        return
+    document = _json_command(
+        runner,
+        ["aws", "ecs", "describe-tasks", *task_arguments, "--output", "json"],
+        timeout=ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS,
+    )
+    tasks = document.get("tasks", [])
+    if (
+        document.get("failures")
+        or len(tasks) != 1
+        or tasks[0].get("taskArn") != task_arn
+    ):
+        raise ConfigError(
+            f"Unable to describe migration task {task_arn}: {document.get('failures', [])!r}"
+        )
+    task = tasks[0]
+    container = next(
+        (
+            container
+            for container in task.get("containers", [])
+            if container.get("name") == MIGRATION_CONTAINER
+        ),
+        {},
+    )
+    if (
+        task.get("lastStatus") != "STOPPED"
+        or container.get("exitCode") != 0
+        or task.get("stopCode") != "EssentialContainerExited"
+    ):
+        raise ConfigError(
+            f"Migration task {task_arn} failed: exit_code={container.get('exitCode')}, "
+            f"stop_code={task.get('stopCode')}, reason={container.get('reason') or task.get('stoppedReason')}"
+        )
 
 
 def _migration_cleanup(runner: CommandRunner, command: Sequence[str]) -> bool:
@@ -1113,7 +1073,6 @@ def _register_task_definition(
     state: _EcsState,
     runner: CommandRunner,
     *,
-    command: Sequence[str] | None = None,
     timeout: float | None = None,
 ) -> str:
     task_definition = copy.deepcopy(dict(state.task_definition))
@@ -1121,10 +1080,6 @@ def _register_task_definition(
     for container in task_definition["containerDefinitions"]:
         if container.get("name") == state.container:
             container["image"] = desired_image
-            if command is not None:
-                container["command"] = list(command)
-                container.pop("healthCheck", None)
-                container.pop("restartPolicy", None)
     registration = {
         key: value
         for key, value in task_definition.items()
