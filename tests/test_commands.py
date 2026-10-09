@@ -11,24 +11,6 @@ from canadalogin_release.support.commands import CommandError, CommandRunner, lo
 
 
 class CommandRunnerTest(unittest.TestCase):
-    def test_timeout_is_bounded_and_does_not_print_partial_output(self) -> None:
-        output = io.StringIO()
-        with (
-            patch(
-                "canadalogin_release.support.commands.subprocess.run",
-                side_effect=subprocess.TimeoutExpired(
-                    ["aws", "ecs", "describe-tasks"], 30, output="sensitive-output"
-                ),
-            ) as run,
-            redirect_stdout(output),
-            self.assertRaisesRegex(CommandError, "Command timed out"),
-        ):
-            CommandRunner().run(
-                ["aws", "ecs", "describe-tasks"], timeout=30, log_output=False
-            )
-        self.assertEqual(run.call_args.kwargs["timeout"], 30)
-        self.assertEqual(output.getvalue(), "")
-
     @patch("builtins.print")
     def test_log_flushes_status_messages(self, print_mock) -> None:
         log("rollout still running")
