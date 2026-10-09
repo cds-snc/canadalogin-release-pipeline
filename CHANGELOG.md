@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.2.4...v1.3.0) (2026-10-09)
+
+
+### Features
+
+* Pre-deployment migrations ([#87](https://github.com/cds-snc/canadalogin-release-pipeline/issues/87)) ([863c650](https://github.com/cds-snc/canadalogin-release-pipeline/commit/863c650babe80b7d685d383bed23f36fd3d9fc9a))
+
+
+### Bug Fixes
+
+* pin reusable workflow tag directly ([#84](https://github.com/cds-snc/canadalogin-release-pipeline/issues/84)) ([a4354b3](https://github.com/cds-snc/canadalogin-release-pipeline/commit/a4354b3ba75bb7c8a81c3cadd71483a5da10c43a))
+
 ## [1.2.4](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.2.3...v1.2.4) (2026-09-08)
 
 
