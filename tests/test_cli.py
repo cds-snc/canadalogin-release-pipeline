@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from canadalogin_release.cli import main
+from canadalogin_release.cli import build_parser, main, run_migrate_ecs
+from canadalogin_release.pipeline.deploy import DeploymentResult
 
 
 class CliTest(unittest.TestCase):

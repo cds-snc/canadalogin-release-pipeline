@@ -18,6 +18,7 @@ from .pipeline.build import execute_build
 from .pipeline.deploy import (
     deploy_ecs,
     deploy_s3,
+    migrate_ecs,
     preflight_ecs,
     preflight_s3,
 )
@@ -62,7 +63,13 @@ def build_parser() -> argparse.ArgumentParser:
     build_parser.add_argument("--github-ref", default="")
     build_parser.add_argument("--github-output", action="store_true")
 
-    for command in ("preflight-s3", "preflight-ecs", "deploy-s3", "deploy-ecs"):
+    for command in (
+        "preflight-s3",
+        "preflight-ecs",
+        "migrate-ecs",
+        "deploy-s3",
+        "deploy-ecs",
+    ):
         deploy_parser = subparsers.add_parser(
             command, help=f"Run {command} deployments"
         )
@@ -170,6 +177,14 @@ def run_preflight_ecs(options: argparse.Namespace) -> int:
     return 0
 
 
+def run_migrate_ecs(options: argparse.Namespace) -> int:
+    config = _load_config(options)
+    context, _ = _deployment_context(options)
+    result = migrate_ecs(config, context)
+    _log_outputs(result.github_outputs(), options.github_output)
+    return 0
+
+
 def run_deploy_s3(options: argparse.Namespace) -> int:
     config = _load_config(options)
     context, _ = _deployment_context(options)
@@ -233,6 +248,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
         "build": run_build,
         "preflight-s3": run_preflight_s3,
         "preflight-ecs": run_preflight_ecs,
+        "migrate-ecs": run_migrate_ecs,
         "deploy-s3": run_deploy_s3,
         "deploy-ecs": run_deploy_ecs,
         "notify": run_notify,

@@ -33,7 +33,7 @@ The supported profiles are:
 - `spa-ecs`: one frontend build published to S3 and one shared Dockerfile-backed ECS image.
 - `static-site`: one static build published to the declared S3 targets, with one target and CloudFront invalidation per site language or domain.
 
-Backend blocks accept `dockerfile` only. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
+Backend blocks accept `dockerfile`, `build_args`, `services`, and `migrations`. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
 
 Frontend and static-site installs use `npm ci` with the repository lockfile. The pnpm exception uses the declared pnpm version and `--frozen-lockfile`. Node.js defaults to `22`.
 
@@ -60,6 +60,7 @@ Resource names are supplied as GitHub **Variables** on each deployment environme
 | `RELEASE_ECS_<SERVICE>_CLUSTER` | Named ECS service cluster, for example `WEB`. |
 | `RELEASE_ECS_<SERVICE>_SERVICE` | Named ECS service name. |
 | `RELEASE_ECS_<SERVICE>_CONTAINER` | Named ECS container name. |
+| `RELEASE_ECS_MIGRATION_TASK_DEFINITION` | Dedicated migration task definition family or ARN, required when `backend.migrations` is enabled. |
 
 Terraform outputs should be mapped to these stable keys for every enabled environment. A multi-service application publishes one key set per service; a bilingual site publishes one key set per target. Resource values are passed to the release CLI through `RELEASE_PIPELINE_VARS` and are never placed in the application YAML.
 
@@ -247,6 +248,18 @@ image serves multiple ECS services. The generated contract names are
 Before any S3 or ECS mutation, the environment workflow verifies all S3 artifacts and targets, CloudFront distributions, desired ECR image tags and digests, ECS services, task definitions, containers, and SSM parameter templates. Changed ECS task definitions use the verified ECR digest rather than a mutable tag. Structured ECS responses are consumed without writing them to workflow logs. ECS updates retain the current pipeline's `propagate-tags: SERVICE` behavior. Task-definition tags are not copied because the current deployment roles do not grant the additional tag read/write permissions.
 
 After an ECS service update, the deployer polls `describe-services` every 15 seconds for up to 600 seconds. It fails immediately when ECS reports a failed rollout and includes rollout states, reasons, failed-task counts, service counts, and recent service events in the error. The SSM image pointer is updated only after the service is stable.
+
+### Predeployment database migrations
+
+Set `backend.migrations: true` for `ecs-service` or `spa-ecs` (default: `false`) and supply `RELEASE_ECS_MIGRATION_TASK_DEFINITION` per environment.
+Terraform owns the command, roles, secrets, logging and resources; the pipeline replaces only the image with the verified candidate digest.
+The definition must support Fargate/`awsvpc`, include task/execution roles, and have one essential `migrations` container with no `healthCheck` or `restartPolicy`.
+After all preflights, one task runs per backend deployment using the first service's cluster/network, even if the candidate image is already deployed; migrations must be safe to repeat.
+Deployment waits for a normal exit with code zero, up to 900 seconds; failures block all frontend/backend updates and attempt task cleanup.
+The deployment role needs ECS describe/register/deregister/run/stop task permissions and `iam:PassRole` for both roles; inspect CloudWatch logs for migration output and ECS after cleanup warnings or cancellation.
+**No automatic retry or database rollback**, including when a later deployment fails.
+**Migrations must be forward-compatible with the old tasks still running.**
+**The environment concurrency lock does not serialize migrations across repositories or manual invocations.**
 
 ## Repository dispatch
 

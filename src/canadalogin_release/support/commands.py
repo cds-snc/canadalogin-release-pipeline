@@ -50,6 +50,7 @@ class CommandRunner:
         unset_environment: Sequence[str] = (),
         check: bool = True,
         log_output: bool = True,
+        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         if not arguments or any(
             not isinstance(argument, str) for argument in arguments
@@ -60,14 +61,19 @@ class CommandRunner:
             merged_environment.pop(name, None)
         if environment:
             merged_environment.update(environment)
-        result = subprocess.run(
-            list(arguments),
-            cwd=cwd,
-            env=merged_environment,
-            check=False,
-            text=True,
-            capture_output=True,
-        )
+        timeout_options = {"timeout": timeout} if timeout is not None else {}
+        try:
+            result = subprocess.run(
+                list(arguments),
+                cwd=cwd,
+                env=merged_environment,
+                check=False,
+                text=True,
+                capture_output=True,
+                **timeout_options,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise CommandError(f"Command timed out: {' '.join(arguments)}") from error
         if log_output and result.stdout:
             print(result.stdout, end="", flush=True)
         if log_output and result.stderr:

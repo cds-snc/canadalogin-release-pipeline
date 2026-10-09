@@ -129,6 +129,17 @@ class PipelineConfigTest(unittest.TestCase):
                 )
             )
 
+    def test_backend_migrations_default_off_and_opt_in(self) -> None:
+        self.assertFalse(self.load().deployments[1].migrations)
+        for profile in ("spa-ecs", "ecs-service"):
+            with self.subTest(profile=profile):
+                config = self.load(
+                    BASE_CONFIG.replace(
+                        "profile: spa-ecs", f"profile: {profile}"
+                    ).replace("backend:\n", "backend:\n    migrations: true\n")
+                )
+                self.assertTrue(config.deployments[-1].migrations)
+
     def test_schema_two_rejects_secret_references(self) -> None:
         invalid = SCHEMA_TWO_CONFIG.replace(
             "VITE_BACKEND_API_URL: {var: VITE_BACKEND_API_URL}",
