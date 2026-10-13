@@ -25,6 +25,11 @@ on:
         required: false
         default: false
         type: boolean
+      disable_old_code_protection:
+        description: Disable protections against deploying old code during a manual deployment.
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   release:
@@ -34,4 +39,5 @@ jobs:
       environment: ${{ inputs.environment }}
       force-redeploy: ${{ inputs.force-redeploy }}
       rebuild: ${{ inputs.rebuild }}
+      disable_old_code_protection: ${{ inputs.disable_old_code_protection }}
     secrets: inherit
