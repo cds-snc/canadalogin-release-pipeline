@@ -12,9 +12,9 @@ FULL_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 class WorkflowContractTest(unittest.TestCase):
     def workflow_files(self) -> list[Path]:
-        return sorted((ROOT / ".github" / "workflows").glob("*.yml")) + [
-            ROOT / "actions" / "setup" / "action.yml"
-        ]
+        return sorted((ROOT / ".github" / "workflows").glob("*.yml")) + sorted(
+            (ROOT / "actions").glob("*/action.yml")
+        )
 
     def test_external_actions_are_pinned_to_full_commit_shas(self) -> None:
         failures = []

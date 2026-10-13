@@ -1,0 +1,26 @@
+name: Scan dependency vulnerabilities
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: Exact caller repository commit to scan.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Critical dependency vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source to scan
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - name: Scan critical dependency vulnerabilities
+        uses: $/actions/scan-dependencies
