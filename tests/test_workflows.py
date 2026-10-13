@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 import unittest
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).parents[1]
 USES_PATTERN = re.compile(r"^\s*uses:\s*([^\s#]+)", re.MULTILINE)
@@ -41,6 +45,114 @@ class WorkflowContractTest(unittest.TestCase):
         for path in self.workflow_files():
             with self.subTest(path=path.name):
                 self.assertNotIn("pull_request_target", path.read_text())
+
+    def test_old_code_protection_override_is_default_off_and_forwarded(self) -> None:
+        public = yaml.safe_load(
+            (ROOT / ".github/workflows/release__release-pipeline.yml").read_text()
+        )
+        internal = yaml.safe_load(
+            (
+                ROOT
+                / ".github/workflows/release__internal-release-pipeline-interface.yml"
+            ).read_text()
+        )
+        caller = yaml.safe_load(
+            (
+                ROOT
+                / "examples/your-repository-root/.github/workflows/release-pipeline.yml"
+            ).read_text()
+        )
+        for workflow, event in (
+            (public, "workflow_call"),
+            (internal, "workflow_call"),
+            (caller, "workflow_dispatch"),
+        ):
+            # PyYAML treats an unquoted "on" key as a YAML 1.1 boolean.
+            triggers = workflow.get("on", workflow.get(True))
+            protection = triggers[event]["inputs"]["disable_old_code_protection"]
+            self.assertEqual(protection["type"], "boolean")
+            self.assertIs(protection["default"], False)
+            self.assertIs(protection["required"], False)
+        self.assertEqual(
+            public["jobs"]["release"]["with"]["disable_old_code_protection"],
+            "${{ inputs.disable_old_code_protection }}",
+        )
+        self.assertEqual(
+            caller["jobs"]["release"]["with"]["disable_old_code_protection"],
+            "${{ inputs.disable_old_code_protection || false }}",
+        )
+
+    def test_old_code_protection_gates_planning_except_prs_and_manual_override(
+        self,
+    ) -> None:
+        pipeline = yaml.safe_load(
+            (
+                ROOT
+                / ".github/workflows/release__internal-release-pipeline-interface.yml"
+            ).read_text()
+        )
+        plan = pipeline["jobs"]["plan"]
+        guard = plan["steps"][0]
+        self.assertEqual(guard["name"], "Verify workflow SHA is current main")
+        self.assertEqual(
+            guard["if"],
+            "github.event_name != 'pull_request' && "
+            "!(github.event_name == 'workflow_dispatch' && "
+            "inputs.disable_old_code_protection == true)",
+        )
+        self.assertEqual(guard["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertEqual(plan["permissions"]["contents"], "read")
+        self.assertNotIn("continue-on-error", guard)
+        for name in ("release_please", "required_builds", "deploy"):
+            self.assertIn("plan", pipeline["jobs"][name]["needs"])
+        for name in ("required_builds", "deploy"):
+            self.assertIn(
+                "needs.plan.result == 'success'", pipeline["jobs"][name]["if"]
+            )
+
+    def test_old_code_protection_checks_caller_main_and_fails_closed(self) -> None:
+        pipeline = yaml.safe_load(
+            (
+                ROOT
+                / ".github/workflows/release__internal-release-pipeline-interface.yml"
+            ).read_text()
+        )
+        script = pipeline["jobs"]["plan"]["steps"][0]["run"]
+        fake_gh = """
+gh() {
+  [[ "$*" == "api repos/example/caller/git/ref/heads/main --jq .object.sha" ]] || return 2
+  printf '%s\\n' "$TEST_MAIN_SHA"
+  return "$TEST_API_EXIT_CODE"
+}
+"""
+        for name, workflow_sha, main_sha, api_exit_code, expected_code in (
+            ("current", "a" * 40, "a" * 40, 0, 0),
+            ("stale", "a" * 40, "b" * 40, 0, 1),
+            ("unavailable", "a" * 40, "", 1, 1),
+            ("empty", "a" * 40, "", 0, 1),
+        ):
+            with self.subTest(name=name):
+                result = subprocess.run(
+                    ["bash", "-e", "-o", "pipefail", "-c", fake_gh + script],
+                    env={
+                        **os.environ,
+                        "GITHUB_REPOSITORY": "example/caller",
+                        "GITHUB_SHA": workflow_sha,
+                        "TEST_MAIN_SHA": main_sha,
+                        "TEST_API_EXIT_CODE": str(api_exit_code),
+                    },
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, expected_code, result.stderr)
+                if name == "stale":
+                    self.assertIn(workflow_sha, result.stdout)
+                    self.assertIn(main_sha, result.stdout)
+                    self.assertIn(
+                        "manually dispatch with old-code protection disabled",
+                        result.stdout,
+                    )
 
     def test_deployment_requires_build_result_and_runs_independently(self) -> None:
         workflow = (

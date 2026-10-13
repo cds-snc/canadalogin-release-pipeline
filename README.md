@@ -24,6 +24,8 @@ This repository centralizes the release pipeline used by CanadaLogin application
 - The `dev` environment always tracks `main` and is deployed on every merge to main.
 - All other environments track pinned versions in the `.deployed_versions/` directory. They deploy only when their version file is updated and merged to main.
 - A manual run with **Force deployments to all enabled environments** selected deploys the current desired version to every configured environment.
+- Before planning a deployment, the workflow SHA must match the caller repository's current `main` SHA. Stale runs fail before release-please, builds, or deployments can start; PR-only planning is unaffected.
+- To intentionally deploy older code, manually dispatch the caller workflow with **Disable protections against deploying old code** selected (`disable_old_code_protection: true`). This override defaults to false and is honoured only for `workflow_dispatch`; `force-redeploy` and `rebuild` do not bypass the protection.
 - By default, `test` is auto-incremented when a release is made using release-please. Thus `test` always tracks the latest release.
 - Other higher environments are manually incremented as needed. Do so using the usual PR process.
 - GitHub CODEOWNERS or branch rulesets can be used to assign required approvers to deploy to specific environments.
