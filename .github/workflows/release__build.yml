@@ -1,5 +1,9 @@
 # Build one release artifact according to the inputs.
 # This workflow is called by `release__internal-release-pipeline-interface.yml`.
+#
+# Command builds (npm and similar) run caller-controlled code on the runner, so they run here and nothing built here is
+# signed. Container images are built AND attested by `release__build-image.yml`, the only signing identity that
+# deployments trust. Do not add signing (attestations: write) to this file.
 
 name: Build release artifact
 
@@ -103,22 +107,17 @@ on:
     outputs:
       result:
         description: Actual build result.
-        value: ${{ jobs.build.outputs.result }}
+        value: ${{ jobs.build.outputs.result || jobs.image.outputs.result }}
 
 jobs:
   build:
-    if: inputs.enabled
+    if: inputs.enabled && inputs.kind != 'docker'
     name: Build artifact
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     outputs:
-      image_uri: ${{ steps.build.outputs.image_uri }}
-      image_repository: ${{ steps.build.outputs.image_repository }}
-      image_digest: ${{ steps.build.outputs.image_digest }}
-      image_built: ${{ steps.build.outputs.image_built }}
-      image_attestable: ${{ steps.build.outputs.image_attestable }}
       result: ${{ steps.result.outputs.result }}
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
@@ -171,10 +170,6 @@ jobs:
           role-session-name: CanadaLoginReleaseBuild
           aws-region: ${{ inputs.aws-region }}
 
-      - name: Log in to Amazon ECR
-        if: inputs.kind == 'docker'
-        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
-
       - name: Build and publish artifact
         id: build
         continue-on-error: ${{ inputs.allow-failure }}
@@ -193,6 +188,7 @@ jobs:
           --sha "$GITHUB_SHA"
           --source-sha "${{ inputs.source-sha }}"
           --github-ref "$GITHUB_REF"
+          --require-kind command
           --github-output
 
       - name: Record build result
@@ -225,8 +221,8 @@ jobs:
           --detail "$BUILD_NAME"
 
   sbom:
-    if: inputs.sbom-enabled && needs.build.outputs.result == 'success'
-    needs: build
+    if: inputs.sbom-enabled && needs.image.outputs.result == 'success'
+    needs: image
     name: Publish image SBOM
     runs-on: ubuntu-latest
     permissions:
@@ -278,7 +274,7 @@ jobs:
         env:
           TRIVY_DB_REPOSITORY: ${{ vars.TRIVY_DB_REPOSITORY }}
         with:
-          docker_image: ${{ needs.build.outputs.image_uri }}
+          docker_image: ${{ needs.image.outputs.image_uri }}
           dockerfile_path: ${{ inputs.sbom-dockerfile }}
           sbom_name: ${{ inputs.sbom-name }}
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -307,35 +303,43 @@ jobs:
           --workflow-url "$WORKFLOW_URL"
           --detail "$BUILD_NAME SBOM"
 
-  # SLSA build provenance for container images. Signing is delegated to release__attest.yml, a separate reusable
-  # workflow that runs nothing but actions/attest. A Sigstore certificate names the reusable workflow FILE (its
-  # job_workflow_ref), not the job, and the build and sbom jobs in this file hold id-token: write while running
-  # caller-controlled code, so anything signed with this file's identity cannot be trusted. Deployments verify the
-  # release__attest.yml identity instead; see docs/configuration.md. Do not add jobs that sign directly to this file.
-  #
-  # Only images this run pushed AND built from GITHUB_SHA are attested. The provenance and signing certificate are
-  # derived from the run's OIDC claims (GITHUB_SHA/GITHUB_REF), so an image built from another commit (source-sha)
-  # would be attested with the wrong source.
-  attest:
-    if: >-
-      needs.build.outputs.result == 'success' &&
-      needs.build.outputs.image_attestable == 'true' &&
-      needs.build.outputs.image_digest != ''
-    needs: build
-    name: Attest image build provenance
+  # Container images are built and attested in a separate reusable workflow; see the header of
+  # release__build-image.yml for why that file, and only that file, may sign.
+  image:
+    if: inputs.enabled && inputs.kind == 'docker'
+    name: Build image
     permissions:
       attestations: write
       contents: read
       id-token: write
-    uses: ./.github/workflows/release__attest.yml
+    uses: ./.github/workflows/release__build-image.yml
     with:
-      subject-name: ${{ needs.build.outputs.image_repository }}
-      subject-digest: ${{ needs.build.outputs.image_digest }}
+      config-path: ${{ inputs.config-path }}
+      name: ${{ inputs.name }}
+      environment: ${{ inputs.environment }}
+      github-environment: ${{ inputs.github-environment }}
+      source-sha: ${{ inputs.source-sha }}
+      aws-role: ${{ inputs.aws-role }}
+      aws-account-id: ${{ inputs.aws-account-id }}
+      aws-region: ${{ inputs.aws-region }}
+      dns-audit: ${{ inputs.dns-audit }}
+      release-pipeline-vars: ${{ inputs.release-pipeline-vars }}
+      allow-failure: ${{ inputs.allow-failure }}
+    secrets:
+      LOG_ANALYTICS_WORKSPACE_ID: ${{ secrets.LOG_ANALYTICS_WORKSPACE_ID }}
+      LOG_ANALYTICS_WORKSPACE_KEY: ${{ secrets.LOG_ANALYTICS_WORKSPACE_KEY }}
 
-  attest-failure-notify:
-    if: failure() && needs.attest.result == 'failure' && inputs.notify-failure
-    needs: attest
-    name: Notify attestation failure
+  # Failure alerts for image builds live here, outside the signing workflow, because they need the caller
+  # repository and Slack secrets. A failed image job whose build result is success means signing failed.
+  image-failure-notify:
+    if: >-
+      always() &&
+      inputs.enabled &&
+      inputs.kind == 'docker' &&
+      inputs.notify-failure &&
+      (needs.image.result == 'failure' || needs.image.outputs.result == 'failure')
+    needs: image
+    name: Notify image build failure
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -352,10 +356,10 @@ jobs:
       - name: Set up release tooling
         uses: $/actions/setup
 
-      - name: Notify Slack about attestation failure
+      - name: Notify Slack about image build failure
         env:
           BUILD_ENVIRONMENT: ${{ inputs.target-environment }}
-          BUILD_NAME: ${{ inputs.name }}
+          BUILD_DETAIL: ${{ needs.image.outputs.result == 'success' && format('{0} provenance attestation', inputs.name) || inputs.name }}
           CONFIG_PATH: ${{ inputs.config-path }}
           RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -373,4 +377,4 @@ jobs:
           --environment "$BUILD_ENVIRONMENT"
           --sha "$GITHUB_SHA"
           --workflow-url "$WORKFLOW_URL"
-          --detail "$BUILD_NAME provenance attestation"
+          --detail "$BUILD_DETAIL"

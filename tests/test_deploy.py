@@ -16,6 +16,7 @@ from unittest.mock import patch
 from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.pipeline.deploy import (
     ATTESTATION_SIGNER_IDENTITY_REGEX,
+    ATTESTATION_SIGNER_REMOTE,
     ATTESTATION_SIGNER_WORKFLOW,
     _ecs_rollout_failed,
     _ecs_service_diagnostics,
@@ -36,6 +37,37 @@ backend:
     dockerfile: backend/Dockerfile
     services: [web, worker]
 """
+
+
+RELEASED_PIPELINE_COMMIT = "c664af9a7c15ab37dd3690a3bd86781b0acb89bf"
+UNRELEASED_PIPELINE_COMMIT = "0902b1f918c7b76dbad22c964c3939eca685ce3e"
+RELEASE_TAGS = (
+    f"{UNRELEASED_PIPELINE_COMMIT}\trefs/tags/v1.2.4-rc1\n"
+    f"{RELEASED_PIPELINE_COMMIT}\trefs/tags/v1.2.5\n"
+)
+
+
+def verified_attestations(*signer_digests: str) -> str:
+    """Shape of `gh attestation verify --format json` output (sigstore-go VerificationResult)."""
+    return json.dumps(
+        [
+            {
+                "attestation": {"bundle": {}},
+                "verificationResult": {
+                    "mediaType": "application/vnd.dev.sigstore.verificationresult+json;version=0.1",
+                    "signature": {
+                        "certificate": {
+                            "subjectAlternativeName": f"https://github.com/{ATTESTATION_SIGNER_WORKFLOW}@refs/tags/v1.2.5",
+                            "buildSignerURI": f"https://github.com/{ATTESTATION_SIGNER_WORKFLOW}@refs/tags/v1.2.5",
+                            "buildSignerDigest": digest,
+                            "sourceRepositoryRef": "refs/heads/main",
+                        }
+                    },
+                },
+            }
+            for digest in signer_digests
+        ]
+    )
 
 
 class AwsRunner:
@@ -349,7 +381,13 @@ class DeployTest(unittest.TestCase):
         )
 
     def attestation_case(
-        self, gh_return_code: int = 0, manifest: str = '{"schemaVersion":2}'
+        self,
+        gh_return_code: int = 0,
+        manifest: str = '{"schemaVersion":2}',
+        gh_output: str | None = None,
+        tags: str = RELEASE_TAGS,
+        tags_return_code: int = 0,
+        ecr_images: list[dict[str, object]] | None = None,
     ) -> tuple[PipelineConfig, RuntimeContext, AwsRunner, str]:
         config = self.config_from_text(
             MULTI_SERVICE_CONFIG.replace(
@@ -362,11 +400,19 @@ class DeployTest(unittest.TestCase):
         image = json.dumps(
             {"imageDetails": [{"imageTags": ["abc123"], "imageDigest": digest}]}
         )
+        if ecr_images is None:
+            ecr_images = [{"imageManifest": manifest}]
         runner = AwsRunner(
             [
                 (0, image),
-                (0, json.dumps({"images": [{"imageManifest": manifest}], "failures": []})),
-                (gh_return_code, ""),
+                (0, json.dumps({"images": ecr_images, "failures": []})),
+                (
+                    gh_return_code,
+                    verified_attestations(RELEASED_PIPELINE_COMMIT)
+                    if gh_output is None
+                    else gh_output,
+                ),
+                (tags_return_code, tags),
             ]
         )
         context = self.context(
@@ -382,13 +428,21 @@ class DeployTest(unittest.TestCase):
         )
         return config, context, runner, digest
 
-    def test_attestation_verified_once_per_image_before_ecs_reads(self) -> None:
-        config, context, runner, digest = self.attestation_case()
-
+    def run_attestation_case(self, **case: object) -> tuple[AwsRunner, str, ConfigError]:
+        config, context, runner, digest = self.attestation_case(**case)  # type: ignore[arg-type]
         with patch.dict("os.environ", {"GITHUB_REPOSITORY": "cds-snc/example"}):
-            with self.assertRaises(ConfigError):
-                # The runner has no ECS responses queued; verification must already be done.
+            with self.assertRaises(ConfigError) as raised:
+                # No ECS responses are queued, so a passed verification still ends in an
+                # ECS error; the error message says which.
                 deploy_ecs(config, context, runner=runner)
+        return runner, digest, raised.exception
+
+    def assert_verification_passed(self, runner: AwsRunner, error: ConfigError) -> None:
+        self.assertEqual(runner.commands[4][0:3], ("aws", "ecs", "describe-services"))
+        self.assertNotIn("attestation", str(error).lower())
+
+    def test_attestation_verified_once_per_image_before_ecs_reads(self) -> None:
+        runner, digest, error = self.run_attestation_case()
 
         self.assertEqual(runner.commands[1][0:3], ("aws", "ecr", "batch-get-image"))
         self.assertIn(f"imageDigest={digest}", runner.commands[1])
@@ -400,56 +454,164 @@ class DeployTest(unittest.TestCase):
             gh[gh.index("--cert-identity-regex") + 1], ATTESTATION_SIGNER_IDENTITY_REGEX
         )
         self.assertEqual(gh[gh.index("--source-ref") + 1], "refs/heads/main")
-        self.assertEqual(gh[gh.index("--source-digest") + 1], context.sha)
+        self.assertEqual(gh[gh.index("--source-digest") + 1], "abc123")
         self.assertEqual(
             gh[gh.index("--predicate-type") + 1], "https://slsa.dev/provenance/v1"
         )
         self.assertIn("--deny-self-hosted-runners", gh)
-        self.assertEqual(runner.commands[3][0:3], ("aws", "ecs", "describe-services"))
+        self.assertEqual(gh[gh.index("--format") + 1], "json")
+        self.assertEqual(
+            runner.commands[3],
+            ("git", "ls-remote", "--tags", ATTESTATION_SIGNER_REMOTE, "refs/tags/v*"),
+        )
+        self.assert_verification_passed(runner, error)
         self.assertEqual(
             sum(command[0:3] == ("gh", "attestation", "verify") for command in runner.commands),
             1,
         )
 
-    def test_attestation_signer_must_be_a_released_attest_workflow(self) -> None:
+    def test_attestation_signer_identity_names_only_the_image_build_workflow(self) -> None:
         pattern = re.compile(ATTESTATION_SIGNER_IDENTITY_REGEX)
         workflow = f"https://github.com/{ATTESTATION_SIGNER_WORKFLOW}"
 
-        for ref in ("refs/tags/v1.2.4", "refs/tags/v12.0.10"):
+        self.assertTrue(ATTESTATION_SIGNER_WORKFLOW.endswith("/release__build-image.yml"))
+        # The ref is not trusted (GitHub can name a tag-pinned call by SHA and vice versa);
+        # the signer commit is checked against released tags instead.
+        for ref in (
+            "refs/tags/v1.2.4",
+            RELEASED_PIPELINE_COMMIT,
+            "refs/heads/main",
+        ):
             with self.subTest(ref=ref):
                 self.assertTrue(pattern.match(f"{workflow}@{ref}"))
         for identity in (
-            f"{workflow}@refs/heads/main",
-            f"{workflow}@refs/heads/feature",
-            f"{workflow}@refs/tags/v1.2.4-rc1",
-            f"{workflow}@refs/tags/v1.2.4/extra",
-            f"{workflow}@0902b1f918c7b76dbad22c964c3939eca685ce3e",
             f"{workflow}.yml@refs/tags/v1.2.4",
-            workflow.replace("release__attest.yml", "release__attestXyml") + "@refs/tags/v1.2.4",
-            # The build workflow runs caller code with id-token: write, so it is never a trusted signer.
-            workflow.replace("release__attest.yml", "release__build.yml") + "@refs/tags/v1.2.4",
+            f"{workflow}@",
+            f"{workflow}@refs/tags/v1.2.4@x",
+            workflow.replace("release__build-image.yml", "release__build-imageXyml")
+            + "@refs/tags/v1.2.4",
+            # Command builds run caller code with id-token: write: never a trusted signer.
+            workflow.replace("release__build-image.yml", "release__build.yml")
+            + "@refs/tags/v1.2.4",
+            # Takes the digest as an input, so it would sign images built anywhere.
+            workflow.replace("release__build-image.yml", "release__attest.yml")
+            + "@refs/tags/v1.2.4",
             workflow.replace("cds-snc/", "cds-snc-fork/") + "@refs/tags/v1.2.4",
         ):
             with self.subTest(identity=identity):
                 self.assertIsNone(pattern.match(identity))
 
+    def test_signer_commit_must_be_a_released_tag(self) -> None:
+        # RELEASE_TAGS points only a pre-release tag (v1.2.4-rc1) at this commit.
+        runner, _, error = self.run_attestation_case(
+            gh_output=verified_attestations(UNRELEASED_PIPELINE_COMMIT)
+        )
+
+        self.assertRegex(str(error), "none of which is a released vX.Y.Z tag")
+        self.assertIn(UNRELEASED_PIPELINE_COMMIT, str(error))
+        self.assertEqual(len(runner.commands), 4)
+
+    def test_any_released_signer_among_verified_attestations_is_enough(self) -> None:
+        runner, _, error = self.run_attestation_case(
+            gh_output=verified_attestations(
+                UNRELEASED_PIPELINE_COMMIT, RELEASED_PIPELINE_COMMIT.upper()
+            )
+        )
+
+        self.assert_verification_passed(runner, error)
+
+    def test_annotated_release_tags_are_peeled_to_their_commit(self) -> None:
+        tag_object = "1" * 40
+        runner, _, error = self.run_attestation_case(
+            tags=(
+                f"{tag_object}\trefs/tags/v1.2.5\n"
+                f"{RELEASED_PIPELINE_COMMIT}\trefs/tags/v1.2.5^{{}}\n"
+            )
+        )
+        self.assert_verification_passed(runner, error)
+
+        runner, _, error = self.run_attestation_case(
+            gh_output=verified_attestations(tag_object),
+            tags=(
+                f"{tag_object}\trefs/tags/v1.2.5\n"
+                f"{RELEASED_PIPELINE_COMMIT}\trefs/tags/v1.2.5^{{}}\n"
+            ),
+        )
+        self.assertRegex(str(error), "none of which is a released")
+
+    def test_release_tag_lookup_failures_fail_closed(self) -> None:
+        for name, case, message in (
+            ("ls-remote fails", {"tags_return_code": 128}, "Unable to list release tags"),
+            ("no release tags", {"tags": ""}, "No released vX.Y.Z tags"),
+        ):
+            with self.subTest(name):
+                runner, _, error = self.run_attestation_case(**case)
+
+                self.assertRegex(str(error), message)
+                self.assertEqual(len(runner.commands), 4)
+
+    def test_unreadable_gh_output_fails_closed(self) -> None:
+        for output, message in (
+            ("not json", "invalid JSON"),
+            ("[]", "no signer commit"),
+            (json.dumps([{"verificationResult": {"signature": {}}}]), "no signer commit"),
+        ):
+            with self.subTest(output=output):
+                runner, _, error = self.run_attestation_case(gh_output=output)
+
+                self.assertRegex(str(error), message)
+                self.assertEqual(len(runner.commands), 3)
+
     def test_failed_attestation_verification_aborts_before_ecs(self) -> None:
-        config, context, runner, _ = self.attestation_case(gh_return_code=1)
+        runner, _, error = self.run_attestation_case(gh_return_code=1, gh_output="")
 
-        with patch.dict("os.environ", {"GITHUB_REPOSITORY": "cds-snc/example"}):
-            with self.assertRaisesRegex(ConfigError, "attestation verification failed"):
-                deploy_ecs(config, context, runner=runner)
-
+        self.assertRegex(str(error), "attestation verification failed")
         self.assertEqual(len(runner.commands), 3)
 
     def test_manifest_digest_mismatch_aborts_before_gh(self) -> None:
-        config, context, runner, _ = self.attestation_case(manifest='{"tampered":1}')
+        runner, _, error = self.run_attestation_case(manifest='{"tampered":1}')
 
-        with patch.dict("os.environ", {"GITHUB_REPOSITORY": "cds-snc/example"}):
-            with self.assertRaisesRegex(ConfigError, "refusing to verify"):
-                deploy_ecs(config, context, runner=runner)
-
+        self.assertRegex(str(error), "refusing to verify")
         self.assertEqual(len(runner.commands), 2)
+
+    def test_duplicate_ecr_entries_for_the_requested_digest_are_accepted(self) -> None:
+        # ECR lists one entry per tag (here the SHA tag and latest) for the same digest.
+        _, _, _, digest = self.attestation_case()
+        manifest = '{"schemaVersion":2}'
+        runner, _, error = self.run_attestation_case(
+            ecr_images=[
+                {"imageId": {"imageDigest": digest, "imageTag": "abc123"}, "imageManifest": manifest},
+                {"imageId": {"imageDigest": digest, "imageTag": "latest"}, "imageManifest": manifest},
+            ]
+        )
+
+        self.assertEqual(runner.commands[2][0:3], ("gh", "attestation", "verify"))
+        self.assert_verification_passed(runner, error)
+
+    def test_ecr_entries_that_disagree_or_are_missing_abort_before_gh(self) -> None:
+        _, _, _, digest = self.attestation_case()
+        manifest = '{"schemaVersion":2}'
+        for name, images, message in (
+            (
+                "one entry tampered",
+                [
+                    {"imageId": {"imageDigest": digest, "imageTag": "abc123"}, "imageManifest": manifest},
+                    {"imageId": {"imageDigest": digest, "imageTag": "latest"}, "imageManifest": '{"tampered":1}'},
+                ],
+                "refusing to verify",
+            ),
+            (
+                "only another digest",
+                [{"imageId": {"imageDigest": "sha256:" + "0" * 64}, "imageManifest": manifest}],
+                "ECR returned no manifest",
+            ),
+            ("no entries", [], "ECR returned no manifest"),
+        ):
+            with self.subTest(name):
+                runner, _, error = self.run_attestation_case(ecr_images=images)
+
+                self.assertRegex(str(error), message)
+                self.assertEqual(len(runner.commands), 2)
 
     def test_attestation_verification_is_off_by_default(self) -> None:
         config = self.config_from_text(MULTI_SERVICE_CONFIG)
@@ -459,7 +621,10 @@ class DeployTest(unittest.TestCase):
             deploy_ecs(config, context, runner=runner)
 
         self.assertFalse(
-            any(command[0] == "gh" or "batch-get-image" in command for command in runner.commands)
+            any(
+                command[0] in ("gh", "git") or "batch-get-image" in command
+                for command in runner.commands
+            )
         )
 
     def test_missing_ecr_image_aborts_before_service_mutation(self) -> None:

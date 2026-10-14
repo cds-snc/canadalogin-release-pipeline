@@ -62,9 +62,18 @@ def execute_build(
     runner: CommandRunner | None = None,
     git_runner: GitRunner = run_git,
     release_tag_resolver: ReleaseTagResolver = release_tag_for_sha,
+    required_kind: str | None = None,
 ) -> BuildResult:
     runner = runner or CommandRunner()
     build = _find_build(config, build_name)
+    # Workflows pin the kind they may run. The image workflow holds the trusted signing
+    # identity, so it must never run a command build (caller code on the runner host),
+    # whatever the caller's configuration says.
+    if required_kind is not None and build.kind != required_kind:
+        raise ConfigError(
+            f"Build {build.name!r} is a {build.kind!r} build; this workflow only runs "
+            f"{required_kind!r} builds"
+        )
     if context.environment not in build.environments:
         raise ConfigError(
             f"Build {build.name!r} is not configured for {context.environment!r}"
