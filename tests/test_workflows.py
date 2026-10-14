@@ -311,6 +311,24 @@ class WorkflowContractTest(unittest.TestCase):
             ["LOG_ANALYTICS_WORKSPACE_ID", "LOG_ANALYTICS_WORKSPACE_KEY"],
         )
 
+    def test_release_tooling_setup_cannot_run_caller_python(self) -> None:
+        # Release workflows check out the caller repository, often before setup. `python -m` puts
+        # the current directory first on sys.path, so a caller's top-level `pip` package would run.
+        setup = (ROOT / "actions" / "setup" / "action.yml").read_text()
+        install = setup.split("- name: Install release tooling\n", 1)[1]
+
+        self.assertIn("working-directory: ${{ github.action_path }}\n", install)
+        self.assertEqual(install.count("python -I -m pip install"), 2)
+        caller_facing = sorted((ROOT / ".github" / "workflows").glob("release__*.yml")) + sorted(
+            (ROOT / "actions").glob("*/action.yml")
+        )
+        for path in caller_facing:
+            with self.subTest(path=path.name):
+                self.assertIsNone(
+                    re.search(r"\bpython3?\s+-m\b", path.read_text()),
+                    "run Python with -I so caller files in the workspace cannot be imported",
+                )
+
     def test_image_workflow_is_called_only_by_the_build_workflow(self) -> None:
         callers = [
             path.name

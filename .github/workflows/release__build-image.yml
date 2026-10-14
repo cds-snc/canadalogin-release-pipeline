@@ -106,9 +106,9 @@ jobs:
       name: ${{ inputs.github-environment || inputs.environment }}
       deployment: false
     steps:
-      # Install the release tooling before any caller files exist in the workspace: the setup action runs
-      # `python -m pip` from the workspace, and `python -m` puts the current directory first on sys.path, so a
-      # caller repository containing a top-level `pip` package would otherwise run on the runner.
+      # Install the release tooling before any caller files exist in the workspace. The setup action already runs
+      # pip isolated from the workspace (a caller's top-level `pip` package must never run); installing first keeps
+      # this job safe even if that action regresses.
       - name: Set up release tooling
         uses: $/actions/setup
 
