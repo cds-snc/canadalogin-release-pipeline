@@ -1,6 +1,12 @@
 name: Scan critical dependency vulnerabilities
 description: Fail on known CRITICAL dependency vulnerabilities in the checked-out source.
 
+inputs:
+  policy-sha:
+    description: Caller commit containing the repository-root .trivyignore.yaml.
+    required: false
+    default: ""
+
 runs:
   using: composite
   steps:
@@ -16,4 +22,5 @@ runs:
       env:
         SCAN_ROOT: ${{ github.workspace }}
         SCANNER_ACTION_PATH: ${{ github.action_path }}
+        POLICY_SHA: ${{ inputs.policy-sha }}
       run: bash "$SCANNER_ACTION_PATH/scan.sh"

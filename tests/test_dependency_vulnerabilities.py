@@ -58,10 +58,14 @@ class DependencyWorkflowTest(unittest.TestCase):
         self.assertEqual(definition["permissions"], {"contents": "read"})
         job = definition["jobs"]["scan"]
         self.assertNotIn("environment", job)
-        checkout, scan = job["steps"]
-        self.assertEqual(checkout["with"]["ref"], "${{ inputs.sha }}")
+        checkout, select_source, scan = job["steps"]
+        self.assertEqual(checkout["with"]["ref"], "${{ github.sha }}")
+        self.assertEqual(checkout["with"]["fetch-depth"], 0)
         self.assertFalse(checkout["with"]["persist-credentials"])
+        self.assertEqual(select_source["env"]["SCAN_SHA"], "${{ inputs.sha }}")
+        self.assertEqual(select_source["run"], 'git checkout --detach "$SCAN_SHA"')
         self.assertEqual(scan["uses"], "$/actions/scan-dependencies")
+        self.assertEqual(scan["with"]["policy-sha"], "${{ github.sha }}")
         self.assertNotIn("secrets", scan)
         self.assertNotIn("continue-on-error", scan)
 
@@ -76,7 +80,13 @@ class DependencyWorkflowTest(unittest.TestCase):
 
 
 class DependencyScannerTest(unittest.TestCase):
-    def run_scan(self, exit_code: int) -> tuple[subprocess.CompletedProcess, list[str]]:
+    def run_scan(
+        self,
+        exit_code: int,
+        *,
+        use_policy: bool = False,
+        ignore_content: str | None = None,
+    ) -> tuple[subprocess.CompletedProcess, list[str]]:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "source with spaces"
@@ -84,6 +94,27 @@ class DependencyScannerTest(unittest.TestCase):
             # A caller's scanner configuration must not suppress the shared gate.
             (source / "trivy.yaml").write_text("severity: [LOW]\n")
             (source / ".trivyignore").write_text("CVE-EXAMPLE\n")
+            policy_sha = ""
+            if use_policy:
+
+                def git(*args: str) -> str:
+                    return subprocess.check_output(
+                        ["git", "-C", str(source), *args], text=True
+                    ).strip()
+
+                git("init", "--quiet")
+                git("config", "user.name", "Scanner test")
+                git("config", "user.email", "test@example.com")
+                git("config", "commit.gpgSign", "false")
+                git("add", ".")
+                git("commit", "--quiet", "-m", "Source to scan")
+                source_sha = git("rev-parse", "HEAD")
+                if ignore_content is not None:
+                    (source / ".trivyignore.yaml").write_text(ignore_content)
+                    git("add", ".trivyignore.yaml")
+                    git("commit", "--quiet", "-m", "Add exception policy")
+                policy_sha = git("rev-parse", "HEAD")
+                git("checkout", "--quiet", "--detach", source_sha)
             arguments = root / "arguments.json"
             scanner = root / "trivy"
             scanner.write_text(
@@ -91,6 +122,9 @@ class DependencyScannerTest(unittest.TestCase):
                 "import json, os, sys\n"
                 "from pathlib import Path\n"
                 "Path(os.environ['ARGUMENTS']).write_text(json.dumps(sys.argv[1:]))\n"
+                "ignore = sys.argv[sys.argv.index('--ignorefile') + 1]\n"
+                "print(Path(ignore).read_text())\n"
+                "print('CVE-EXAMPLE CRITICAL example-package 1.0')\n"
                 "sys.exit(int(os.environ['SCANNER_EXIT_CODE']))\n"
             )
             scanner.chmod(0o755)
@@ -104,6 +138,7 @@ class DependencyScannerTest(unittest.TestCase):
                     "SCANNER_ACTION_PATH": str(ACTION),
                     "ARGUMENTS": str(arguments),
                     "SCANNER_EXIT_CODE": str(exit_code),
+                    "POLICY_SHA": policy_sha,
                 },
                 capture_output=True,
                 text=True,
@@ -121,7 +156,7 @@ class DependencyScannerTest(unittest.TestCase):
             ("--severity", "CRITICAL"),
             ("--scanners", "vuln"),
             ("--pkg-types", "library"),
-            ("--exit-code", "1"),
+            ("--exit-code", "42"),
             ("--config", str(ACTION / "trivy.yaml")),
             ("--ignorefile", "/dev/null"),
             ("--ignore-policy", ""),
@@ -137,12 +172,36 @@ class DependencyScannerTest(unittest.TestCase):
         )
 
     def test_critical_findings_fail_the_gate(self) -> None:
-        result, _ = self.run_scan(1)
+        result, _ = self.run_scan(42)
         self.assertEqual(result.returncode, 1)
+        self.assertIn("Deployment blocked: Trivy found CRITICAL", result.stdout)
+        self.assertIn("CRITICAL vulnerabilities:\n", result.stdout)
+        self.assertIn("CVE-EXAMPLE CRITICAL example-package 1.0", result.stdout)
+        self.assertIn(
+            "https://trivy.dev/docs/latest/configuration/filtering/#trivyignoreyaml",
+            result.stdout,
+        )
 
     def test_scanner_errors_fail_closed(self) -> None:
         result, _ = self.run_scan(2)
         self.assertEqual(result.returncode, 2)
+        self.assertNotIn("Deployment blocked:", result.stdout)
+
+    def test_ignore_file_is_loaded_from_policy_commit_not_scanned_source(self) -> None:
+        content = "vulnerabilities:\n  - id: CVE-EXAMPLE\n"
+        result, args = self.run_scan(0, use_policy=True, ignore_content=content)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(content, result.stdout)
+        self.assertIn("Exception policy SHA:", result.stdout)
+        self.assertTrue(
+            args[args.index("--ignorefile") + 1].endswith(".trivyignore.yaml")
+        )
+
+    def test_missing_ignore_file_uses_empty_exceptions(self) -> None:
+        result, args = self.run_scan(42, use_policy=True)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(args[args.index("--ignorefile") + 1], "/dev/null")
+        self.assertIn("Deployment blocked:", result.stdout)
 
 
 if __name__ == "__main__":
