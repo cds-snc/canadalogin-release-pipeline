@@ -199,7 +199,7 @@ Allowed tag modes are:
 - `latest`: `<repository>:latest`
 - `release`: `<repository>:vX.Y.Z`, only when the commit has a release tag
 
-When a Docker repository is an AWS ECR repository and the build publishes `sha` or `release`, the repository must use `IMMUTABLE` or `IMMUTABLE_WITH_EXCLUSION` tag mutability. SHA and release tags are checked before any push; an existing SHA image is reused only when every other non-excluded tag exists and resolves to the same digest. If `latest` is configured, it must be an explicit mutability exclusion. Successful ECR builds record the image digest in their workflow output. Images pushed by the build (not reused) from the workflow commit also receive a signed SLSA build provenance attestation; see [build provenance attestations](../README.md#build-provenance-attestations).
+When a Docker repository is an AWS ECR repository and the build publishes `sha` or `release`, the repository must use `IMMUTABLE` or `IMMUTABLE_WITH_EXCLUSION` tag mutability. SHA and release tags are checked before any push; an existing SHA image is reused only when every other non-excluded tag exists and resolves to the same digest. If `latest` is configured, it must be an explicit mutability exclusion. Successful ECR builds record the image digest in their workflow output.
 
 The backend image is built once with the development environment's contract and
 is reused by every deployment environment. An enabled `load_tests` block adds a
@@ -251,16 +251,14 @@ After an ECS service update, the deployer polls `describe-services` every 15 sec
 
 ### Build provenance verification
 
-Set `backend.verify_attestations: true` (default: `false`) to require a valid build provenance attestation for every backend image before it is used. The check runs against the exact ECR digest during ECS preflight, migrations, and deployment, so an image that fails verification never reaches a migration task or an ECS service. Verification requires:
+Set `backend.verify_attestations: true` (default: `false`) to require, before ECS preflight, migrations and deployment, that the exact image digest has a build provenance attestation:
 
-- an SLSA v1 provenance attestation for the image's digest, created in this repository on a GitHub-hosted runner;
-- a signing certificate for the image build workflow, `cds-snc/canadalogin-release-pipeline/.github/workflows/release__build-image.yml` (an anchored `--cert-identity-regex`), whose Build Signer Digest (the commit of the workflow that signed) is the commit of a released `vX.Y.Z` tag of the pipeline repository, read with `git ls-remote` at verification time. The ref named in the certificate is not trusted, because GitHub was observed naming a tag-pinned call by commit SHA and a SHA-pinned call by tag; the signer commit is what identifies the code. Calls pinned to a release tag or to a released commit SHA both pass; calls from an unreleased branch or commit, or from a fork, do not;
-- that signer to be the workflow that built the image. `release__build-image.yml` signs only a digest its own build job pushed and takes no digest input, and `release__build.yml` (command builds, which run caller code) and any other workflow are never trusted signers, because a signing certificate identifies the workflow file, not the job;
-- a build from this repository's `main` branch (`--source-ref refs/heads/main`) of the exact commit being deployed (`--source-digest <sha>`), so an attested image cannot be deployed under a different commit's tag;
-- `ecr:BatchGetImage` on the backend repository for `RELEASE_ECS_ROLE`. The manifest is read by digest and hashed locally, so no registry login is needed. ECR lists a digest once per tag (for example the SHA tag and `latest`); every entry must hash to the requested digest;
-- outbound access from the runner to `github.com` to list the pipeline's release tags.
+- signed by this pipeline's `release__build.yml` on a GitHub-hosted runner;
+- for a build of this repository's `main` branch at the commit being deployed.
 
-Leave it off until every image an environment may deploy has been built, not reused, by a pipeline release that attests images.
+`RELEASE_ECS_ROLE` needs `ecr:BatchGetImage` on the backend repository. Enable it once every image an environment may deploy was built by a pipeline release that attests images.
+
+This is SLSA Build Level 2: any ref of the shared build workflow is accepted as the signer, and caller build commands run in the same workflow.
 
 ### Predeployment database migrations
 

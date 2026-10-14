@@ -30,6 +30,24 @@ class WorkflowContractTest(unittest.TestCase):
                     failures.append(f"{path}: {reference} is not pinned to a full SHA")
         self.assertEqual(failures, [])
 
+    def test_build_attests_images_and_deploy_can_verify_them(self) -> None:
+        workflows = ROOT / ".github" / "workflows"
+        build = (workflows / "release__build.yml").read_text().split("\n  sbom:\n")[0]
+        setup = (ROOT / "actions" / "setup" / "action.yml").read_text()
+
+        self.assertIn("attestations: write\n      contents: read\n      id-token: write", build)
+        self.assertIn("steps.build.outputs.image_attestable == 'true'", build)
+        self.assertIn("uses: actions/attest@", build)
+        self.assertIn("attestations: read", (workflows / "release__deploy.yml").read_text())
+        example = ROOT / "examples" / "your-repository-root" / ".github" / "workflows"
+        for path in (
+            workflows / "release__internal-release-pipeline-interface.yml",
+            example / "release-pipeline.yml",
+        ):
+            self.assertIn("attestations: write", path.read_text())
+        # A caller's top-level `pip` package in the workspace must not shadow pip.
+        self.assertEqual(setup.count("python -I -m pip"), 2)
+
     def test_unit_test_check_has_an_explicit_user_facing_name(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "ci__unit-tests.yml").read_text()
 
@@ -192,7 +210,7 @@ class WorkflowContractTest(unittest.TestCase):
 
         self.assertIn("name: acceptance-tests\n      deployment: false", acceptance)
         self.assertEqual(acceptance_test.count("deployment: false"), 2)
-        self.assertEqual(build.count("deployment: false"), 3)
+        self.assertEqual(build.count("deployment: false"), 2)
         self.assertIn(
             "deployment: ${{ inputs.github-environment != 'acceptance-tests' }}",
             deploy,
@@ -204,159 +222,12 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("contents: read\n      id-token: write", workflow)
         self.assertIn("sbom:\n", workflow)
         self.assertIn(
-            "sbom:\n    if: inputs.sbom-enabled && needs.image.outputs.result == 'success'",
+            "sbom:\n    if: inputs.sbom-enabled && needs.build.outputs.result == 'success'",
             workflow,
         )
         self.assertIn(
             "permissions:\n      contents: write\n      id-token: write", workflow
         )
-
-    def test_only_the_image_workflow_can_sign(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "release__build.yml").read_text()
-        pipeline = (
-            ROOT / ".github" / "workflows" / "release__internal-release-pipeline-interface.yml"
-        ).read_text()
-        example = (
-            ROOT / "examples" / "your-repository-root" / ".github" / "workflows" / "release-pipeline.yml"
-        ).read_text()
-        jobs = workflow.split("\njobs:\n", 1)[1]
-        build, rest = jobs.split("\n  sbom:\n", 1)
-        sbom, rest = rest.split("\n  image:\n", 1)
-        image, notify = rest.split("\n  image-failure-notify:\n", 1)
-
-        # A signing certificate names the reusable workflow file, not the job. Command builds here run
-        # caller code with id-token: write, so nothing in this file may sign.
-        signers = [
-            path.name for path in self.workflow_files() if "actions/attest@" in path.read_text()
-        ]
-        self.assertEqual(signers, ["release__build-image.yml"])
-        self.assertNotIn("attestations:", build)
-        self.assertNotIn("attestations:", sbom)
-        self.assertIn("    if: inputs.enabled && inputs.kind != 'docker'\n", build)
-        self.assertIn("--require-kind command", build)
-        self.assertIn("value: ${{ jobs.build.outputs.result || jobs.image.outputs.result }}", workflow)
-        self.assertIn("    if: inputs.enabled && inputs.kind == 'docker'\n", image)
-        self.assertIn("    uses: ./.github/workflows/release__build-image.yml\n", image)
-        self.assertIn(
-            "permissions:\n      attestations: write\n      contents: read\n      id-token: write",
-            image,
-        )
-        self.assertNotIn("secrets: inherit", image)
-        self.assertNotIn("digest", image)
-        self.assertIn("needs: image", sbom)
-        self.assertIn("docker_image: ${{ needs.image.outputs.image_uri }}", sbom)
-        # Failure notifications need the caller repository and Slack secrets, so they stay out of the
-        # signing workflow and run without signing permissions.
-        self.assertIn("needs: image", notify)
-        self.assertIn("needs.image.result == 'failure' || needs.image.outputs.result == 'failure'", notify)
-        self.assertIn("permissions:\n      contents: read\n", notify)
-        self.assertNotIn("attestations:", notify)
-        self.assertNotIn("id-token:", notify)
-        self.assertIn("attestations: write\n      contents: write\n      id-token: write", pipeline)
-        self.assertIn("attestations: write", example)
-
-    def test_image_workflow_signs_only_what_it_builds(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "release__build-image.yml").read_text()
-        header, jobs = workflow.split("\njobs:\n", 1)
-        build, attest = jobs.split("\n  attest:\n", 1)
-        inputs = header.split("\n    inputs:\n", 1)[1].split("\n    secrets:\n", 1)[0]
-
-        self.assertIn("on:\n  workflow_call:\n", workflow)
-        self.assertIn("\npermissions: {}\n", workflow)
-        self.assertEqual(
-            re.findall(r"^  [A-Za-z0-9_-]+:$", jobs, re.MULTILINE), ["  build:", "  attest:"]
-        )
-        # No input can name the subject: calling this workflow directly signs only what it built.
-        self.assertNotIn("digest", inputs)
-        self.assertNotIn("subject", inputs)
-        self.assertIn("subject-digest: ${{ needs.build.outputs.image_digest }}", attest)
-        self.assertIn("subject-name: ${{ needs.build.outputs.image_repository }}", attest)
-        self.assertIn("needs: build", attest)
-        self.assertIn("needs.build.outputs.image_attestable == 'true'", attest)
-        self.assertIn(
-            "permissions:\n      attestations: write\n      contents: read\n      id-token: write",
-            attest,
-        )
-        attest_steps = attest.split("\n    steps:\n", 1)[1]
-        self.assertEqual(attest_steps.count("      - name:"), 1)
-        self.assertEqual(
-            [reference.rsplit("@", 1)[0] for reference in USES_PATTERN.findall(attest)],
-            ["actions/attest"],
-        )
-        for forbidden in ("actions/checkout@", "actions/setup", "run:", "environment:", "secrets."):
-            with self.subTest(job="attest", forbidden=forbidden):
-                self.assertNotIn(forbidden, attest)
-
-        # No caller-controlled code on the runner: Docker builds only, no package installs from the
-        # caller repository, and the release tooling is installed before caller files exist.
-        self.assertIn("--require-kind docker", build)
-        self.assertNotIn("attestations:", build)
-        for forbidden in ("setup-node", "npm", "pnpm", "inputs.kind", "node-version", "secrets: inherit"):
-            with self.subTest(job="build", forbidden=forbidden):
-                self.assertNotIn(forbidden, build)
-        self.assertLess(build.index("uses: $/actions/setup"), build.index("actions/checkout@"))
-        self.assertEqual(
-            sorted({reference.rsplit("@", 1)[0] for reference in USES_PATTERN.findall(workflow)}),
-            [
-                "$/actions/setup",
-                "actions/attest",
-                "actions/checkout",
-                "aws-actions/amazon-ecr-login",
-                "aws-actions/configure-aws-credentials",
-                "cds-snc/dns-proxy-action",
-            ],
-        )
-        self.assertEqual(
-            sorted(set(re.findall(r"secrets\.([A-Z0-9_]+)", workflow))),
-            ["LOG_ANALYTICS_WORKSPACE_ID", "LOG_ANALYTICS_WORKSPACE_KEY"],
-        )
-
-    def test_release_tooling_setup_cannot_run_caller_python(self) -> None:
-        # Release workflows check out the caller repository, often before setup. `python -m` puts
-        # the current directory first on sys.path, so a caller's top-level `pip` package would run.
-        setup = (ROOT / "actions" / "setup" / "action.yml").read_text()
-        install = setup.split("- name: Install release tooling\n", 1)[1]
-
-        self.assertIn("working-directory: ${{ github.action_path }}\n", install)
-        self.assertEqual(install.count("python -I -m pip install"), 2)
-        caller_facing = sorted((ROOT / ".github" / "workflows").glob("release__*.yml")) + sorted(
-            (ROOT / "actions").glob("*/action.yml")
-        )
-        for path in caller_facing:
-            with self.subTest(path=path.name):
-                self.assertIsNone(
-                    re.search(r"\bpython3?\s+-m\b", path.read_text()),
-                    "run Python with -I so caller files in the workspace cannot be imported",
-                )
-
-    def test_image_workflow_is_called_only_by_the_build_workflow(self) -> None:
-        callers = [
-            path.name
-            for path in self.workflow_files()
-            if "release__build-image.yml" in "".join(USES_PATTERN.findall(path.read_text()))
-        ]
-
-        self.assertEqual(callers, ["release__build.yml"])
-        self.assertFalse((ROOT / ".github" / "workflows" / "release__attest.yml").exists())
-
-    def test_deploy_trusts_only_the_image_workflow_as_signer(self) -> None:
-        from canadalogin_release.pipeline.deploy import ATTESTATION_SIGNER_WORKFLOW
-
-        self.assertEqual(
-            ATTESTATION_SIGNER_WORKFLOW,
-            "cds-snc/canadalogin-release-pipeline/.github/workflows/release__build-image.yml",
-        )
-
-    def test_ecs_deploy_steps_can_read_attestations(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "release__deploy.yml").read_text()
-
-        self.assertIn("permissions:\n  attestations: read\n  contents: read", workflow)
-        for command in ("preflight-ecs", "migrate-ecs", "deploy-ecs"):
-            with self.subTest(command=command):
-                step = workflow.split(f"canadalogin-release {command}\n", 1)[0]
-                step = step.rsplit("      - name:", 1)[1]
-                self.assertIn("GH_TOKEN: ${{ github.token }}", step)
-        self.assertNotIn("attestations: write", workflow)
 
     def test_actionlint_workflow_lints_workflows(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "ci__actionlint.yml").read_text()

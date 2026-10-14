@@ -62,7 +62,6 @@ def build_parser() -> argparse.ArgumentParser:
     build_parser.add_argument("--repository", default=".")
     build_parser.add_argument("--github-ref", default="")
     build_parser.add_argument("--github-output", action="store_true")
-    build_parser.add_argument("--require-kind", choices=("command", "docker"))
 
     for command in (
         "preflight-s3",
@@ -157,7 +156,6 @@ def run_build(options: argparse.Namespace) -> int:
         build_name=options.name,
         context=context,
         source_sha=options.source_sha or None,
-        required_kind=options.require_kind,
     )
     _log_outputs(result.github_outputs(), options.github_output)
     return 0

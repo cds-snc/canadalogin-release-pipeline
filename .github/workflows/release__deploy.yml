@@ -202,7 +202,6 @@ jobs:
       - name: Preflight ECR images and ECS services
         if: inputs.ecs-role != ''
         env:
-          # Read-only token for build provenance verification (backend.verify_attestations).
           GH_TOKEN: ${{ github.token }}
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ inputs.aws-region }}
@@ -219,7 +218,6 @@ jobs:
         if: inputs.ecs-role != ''
         id: migrate-ecs
         env:
-          # Read-only token for build provenance verification (backend.verify_attestations).
           GH_TOKEN: ${{ github.token }}
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ inputs.aws-region }}
@@ -267,7 +265,6 @@ jobs:
         id: deploy-ecs
         continue-on-error: ${{ inputs.allow-failure }}
         env:
-          # Read-only token for build provenance verification (backend.verify_attestations).
           GH_TOKEN: ${{ github.token }}
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ inputs.aws-region }}

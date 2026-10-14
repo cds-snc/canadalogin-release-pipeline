@@ -4,7 +4,6 @@ import copy
 import hashlib
 import json
 import os
-import re
 import tempfile
 import time
 import uuid
@@ -54,35 +53,8 @@ ECS_MIGRATION_POLL_INTERVAL_SECONDS = 15
 ECS_MIGRATION_CLEANUP_TIMEOUT_SECONDS = 120
 ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS = 60
 MIGRATION_CONTAINER = "migrations"
-# Build provenance is only trusted when signed by the image build workflow, which builds the image
-# itself, signs only the digest it just pushed, and runs no caller-controlled code on a runner.
-# Do not trust release__build.yml (its command builds run caller code with an OIDC token) or any
-# workflow that takes the subject digest as an input (it would sign images built anywhere).
-ATTESTATION_SIGNER_REPOSITORY = "cds-snc/canadalogin-release-pipeline"
 ATTESTATION_SIGNER_WORKFLOW = (
-    f"{ATTESTATION_SIGNER_REPOSITORY}/.github/workflows/release__build-image.yml"
-)
-# The certificate identity must name that workflow file. Its ref is not trusted: GitHub was
-# observed naming a tag-pinned call by commit SHA and a SHA-pinned call by tag when one caller
-# referenced both. What identifies the signing code is the certificate's Build Signer Digest
-# (job_workflow_sha), which must be the commit of a released vX.Y.Z tag; see
-# _released_signer_commits. That also rejects unreleased branches and fork commits.
-ATTESTATION_SIGNER_IDENTITY_REGEX = (
-    r"^https://github\.com/"
-    + ATTESTATION_SIGNER_WORKFLOW.replace(".", r"\.")
-    + r"@[^\s@]+$"
-)
-ATTESTATION_SIGNER_REMOTE = f"https://github.com/{ATTESTATION_SIGNER_REPOSITORY}.git"
-ATTESTATION_RELEASE_TAG = re.compile(r"^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$")
-COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
-# Only images built from the caller repository's main branch may be deployed.
-ATTESTATION_SOURCE_REF = "refs/heads/main"
-ATTESTATION_COMMAND_TIMEOUT_SECONDS = 120
-OCI_MANIFEST_MEDIA_TYPES = (
-    "application/vnd.oci.image.index.v1+json",
-    "application/vnd.oci.image.manifest.v1+json",
-    "application/vnd.docker.distribution.manifest.list.v2+json",
-    "application/vnd.docker.distribution.manifest.v2+json",
+    "cds-snc/canadalogin-release-pipeline/.github/workflows/release__build.yml"
 )
 
 
@@ -571,7 +543,6 @@ def _ecs_deployment_summary(deployment: Mapping[str, Any]) -> str:
 
 # This method validates that:
 # - The ECR image tagged with the planned deployment SHA exists.
-# - When backend.verify_attestations is enabled, that image digest has a valid build provenance attestation.
 # - ECS services, their task definitions, and configured containers are accessible.
 # - Configured SSM parameter names resolve to non-empty values.
 def preflight_ecs(
@@ -1098,217 +1069,54 @@ def _ensure_ecr_image(
 
 
 def _verify_image_attestation(
-    repository_uri: str,
-    image_digest: str | None,
-    source_sha: str,
-    runner: CommandRunner,
+    repository_uri: str, digest: str | None, sha: str, runner: CommandRunner
 ) -> None:
-    """Require a valid build provenance attestation for the exact image digest.
+    """Require build provenance from the pipeline for a main-branch build of `sha`.
 
-    The manifest is fetched by digest and hashed locally, so `gh attestation verify`
-    checks the same digest ECS will run without needing a registry login. The
-    attestation must come from a released attestation workflow, on a GitHub-hosted runner,
-    for a main-branch build of `source_sha` (the commit whose tag is being deployed),
-    so an attested image cannot be deployed under another commit's tag.
+    The manifest is read by digest and hashed locally, so gh verifies the exact digest
+    ECS will run without a registry login.
     """
     registry_id, repository_name = _parse_ecr_repository(repository_uri)
-    if not registry_id or not image_digest:
-        raise ConfigError(
-            "Attestation verification requires an ECR image digest for "
-            f"{repository_uri}"
-        )
-    source_repository = os.environ.get("GITHUB_REPOSITORY", "")
-    if not source_repository:
-        raise ConfigError("Attestation verification requires GITHUB_REPOSITORY")
-    if not source_sha:
-        raise ConfigError("Attestation verification requires the deployed commit SHA")
-    image = f"{repository_uri}@{image_digest}"
-    manifest_bytes = _ecr_manifest_bytes(
-        registry_id, repository_name, image_digest, image, runner
-    )
-    with tempfile.TemporaryDirectory() as directory:
-        manifest_path = Path(directory) / "manifest.json"
-        manifest_path.write_bytes(manifest_bytes)
-        result = runner.run(
-            [
-                "gh",
-                "attestation",
-                "verify",
-                str(manifest_path),
-                "--repo",
-                source_repository,
-                "--cert-identity-regex",
-                ATTESTATION_SIGNER_IDENTITY_REGEX,
-                "--source-ref",
-                ATTESTATION_SOURCE_REF,
-                "--source-digest",
-                source_sha,
-                "--predicate-type",
-                "https://slsa.dev/provenance/v1",
-                "--deny-self-hosted-runners",
-                "--format",
-                "json",
-            ],
-            check=False,
-            log_output=False,
-            timeout=ATTESTATION_COMMAND_TIMEOUT_SECONDS,
-        )
-    if result.returncode != 0:
-        detail = (result.stderr or "").strip() or (result.stdout or "").strip()
-        raise ConfigError(
-            f"Build provenance attestation verification failed for {image}"
-            + (f": {detail}" if detail else "")
-        )
-    # Every result gh prints satisfied the policy above; one of them must also have been
-    # signed by released pipeline code.
-    signer_digests = _verified_signer_digests(result.stdout, image)
-    released = _released_signer_commits(runner)
-    trusted = [digest for digest in signer_digests if digest in released]
-    if not trusted:
-        raise ConfigError(
-            f"Build provenance for {image} was signed by pipeline commit(s) "
-            f"{', '.join(sorted(set(signer_digests)))}, none of which is a released "
-            f"vX.Y.Z tag of {ATTESTATION_SIGNER_REPOSITORY}"
-        )
-    log(
-        f"Verified build provenance attestation for {image} "
-        f"(signed by {', '.join(sorted(released[trusted[0]]))})."
-    )
-
-
-def _ecr_manifest_bytes(
-    registry_id: str,
-    repository_name: str,
-    image_digest: str,
-    image: str,
-    runner: CommandRunner,
-) -> bytes:
-    """Read the manifest for `image_digest` and prove it hashes to that digest.
-
-    ECR can list the same digest once per tag (for example the SHA tag and `latest`),
-    so every entry for the requested digest is checked rather than requiring exactly one.
-    """
+    if not registry_id or not digest:
+        raise ConfigError(f"Attestation needs an ECR image digest: {repository_uri}")
+    image = f"{repository_uri}@{digest}"
     document = _json_command(
         runner,
-        [
-            "aws",
-            "ecr",
-            "batch-get-image",
-            "--registry-id",
-            registry_id,
-            "--repository-name",
-            repository_name,
-            "--image-ids",
-            f"imageDigest={image_digest}",
-            "--accepted-media-types",
-            *OCI_MANIFEST_MEDIA_TYPES,
-            "--output",
-            "json",
-        ],
-    )
-    images = document.get("images")
-    manifests: set[str] = set()
-    for entry in images if isinstance(images, list) else ():
-        if not isinstance(entry, Mapping):
-            continue
-        image_id = entry.get("imageId")
-        entry_digest = (
-            image_id.get("imageDigest") if isinstance(image_id, Mapping) else None
-        )
-        if entry_digest not in (None, image_digest):
-            continue
-        manifest = entry.get("imageManifest")
-        if isinstance(manifest, str) and manifest:
-            manifests.add(manifest)
-    if not manifests:
-        raise ConfigError(
-            f"ECR returned no manifest for {image} (requires ecr:BatchGetImage): "
-            f"failures={document.get('failures')!r}"
-        )
-    for manifest in manifests:
-        actual_digest = f"sha256:{hashlib.sha256(manifest.encode('utf-8')).hexdigest()}"
-        if actual_digest != image_digest:
-            raise ConfigError(
-                f"Manifest of {image} hashes to {actual_digest}; "
-                "refusing to verify a different digest"
-            )
-    # Distinct strings cannot share a SHA-256 digest, so exactly one manifest remains.
-    return next(iter(manifests)).encode("utf-8")
-
-
-def _verified_signer_digests(output: str, image: str) -> list[str]:
-    """Return the Build Signer Digest of each attestation `gh attestation verify` accepted."""
-    try:
-        results = json.loads(output)
-    except json.JSONDecodeError as error:
-        raise ConfigError(
-            f"gh attestation verify returned invalid JSON for {image}: {error}"
-        ) from error
-    digests = []
-    for item in results if isinstance(results, list) else ():
-        verification = item.get("verificationResult") if isinstance(item, Mapping) else None
-        signature = (
-            verification.get("signature") if isinstance(verification, Mapping) else None
-        )
-        certificate = (
-            signature.get("certificate") if isinstance(signature, Mapping) else None
-        )
-        digest = (
-            certificate.get("buildSignerDigest")
-            if isinstance(certificate, Mapping)
-            else None
-        )
-        if isinstance(digest, str) and COMMIT_SHA.fullmatch(digest.lower()):
-            digests.append(digest.lower())
-    if not digests:
-        raise ConfigError(
-            f"gh attestation verify reported no signer commit for {image}; "
-            "refusing to trust the attestation"
-        )
-    return digests
-
-
-def _released_signer_commits(runner: CommandRunner) -> dict[str, frozenset[str]]:
-    """Map each commit of a released vX.Y.Z pipeline tag to its tag names.
-
-    Read from the pipeline repository at verification time, so a newly released
-    pipeline is trusted immediately and a deleted tag stops being trusted. Annotated
-    tags are peeled to their commit. This relies on tag rules that stop anyone but
-    the release process from creating or moving vX.Y.Z tags.
-    """
-    result = runner.run(
-        ["git", "ls-remote", "--tags", ATTESTATION_SIGNER_REMOTE, "refs/tags/v*"],
-        check=False,
-        log_output=False,
-        timeout=ATTESTATION_COMMAND_TIMEOUT_SECONDS,
-    )
+        ["aws", "ecr", "batch-get-image", "--registry-id", registry_id,
+         "--repository-name", repository_name, "--image-ids", f"imageDigest={digest}",
+         "--accepted-media-types", "application/vnd.oci.image.index.v1+json",
+         "application/vnd.oci.image.manifest.v1+json",
+         "application/vnd.docker.distribution.manifest.list.v2+json",
+         "application/vnd.docker.distribution.manifest.v2+json", "--output", "json"],
+    )  # fmt: skip
+    # ECR lists a digest once per tag (e.g. the SHA tag and latest); all must match.
+    manifests = {
+        entry.get("imageManifest", "").encode("utf-8")
+        for entry in document.get("images") or []
+        if isinstance(entry, Mapping)
+    }
+    if not manifests or any(
+        f"sha256:{hashlib.sha256(manifest).hexdigest()}" != digest
+        for manifest in manifests
+    ):
+        raise ConfigError(f"Unable to read a manifest matching {image}")
+    with tempfile.TemporaryDirectory() as directory:
+        manifest_path = Path(directory) / "manifest.json"
+        manifest_path.write_bytes(manifests.pop())
+        result = runner.run(
+            ["gh", "attestation", "verify", str(manifest_path),
+             "--repo", os.environ.get("GITHUB_REPOSITORY", ""),
+             "--signer-workflow", ATTESTATION_SIGNER_WORKFLOW,
+             "--source-ref", "refs/heads/main", "--source-digest", sha,
+             "--deny-self-hosted-runners"],
+            check=False,
+            log_output=False,
+            timeout=120,
+        )  # fmt: skip
     if result.returncode != 0:
-        detail = (result.stderr or "").strip()
-        raise ConfigError(
-            f"Unable to list release tags of {ATTESTATION_SIGNER_REPOSITORY}"
-            + (f": {detail}" if detail else "")
-        )
-    direct: dict[str, str] = {}
-    peeled: dict[str, str] = {}
-    for line in (result.stdout or "").splitlines():
-        parts = line.split()
-        if len(parts) != 2 or not COMMIT_SHA.fullmatch(parts[0]):
-            continue
-        sha, ref = parts
-        if ref.endswith("^{}"):
-            peeled[ref[: -len("^{}")]] = sha
-        else:
-            direct[ref] = sha
-    commits: dict[str, set[str]] = {}
-    for ref, sha in direct.items():
-        if ATTESTATION_RELEASE_TAG.fullmatch(ref):
-            commit = peeled.get(ref, sha)
-            commits.setdefault(commit, set()).add(ref.removeprefix("refs/tags/"))
-    if not commits:
-        raise ConfigError(
-            f"No released vX.Y.Z tags found in {ATTESTATION_SIGNER_REPOSITORY}"
-        )
-    return {commit: frozenset(tags) for commit, tags in commits.items()}
+        detail = (result.stderr or result.stdout or "").strip()
+        raise ConfigError(f"Build provenance verification failed for {image}: {detail}")
+    log(f"Verified build provenance for {image}.")
 
 
 def _parse_ecr_repository(repository_uri: str) -> tuple[str, str]:

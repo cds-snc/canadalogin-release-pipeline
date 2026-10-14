@@ -31,10 +31,7 @@ class BuildResult:
     image_uri: str = ""
     image_digest: str = ""
     image_repository: str = ""
-    image_built: bool = False
-    # True only when this run pushed the image AND built it from the workflow commit
-    # (GITHUB_SHA). Build provenance is derived from the run's OIDC claims, so an image
-    # built from any other commit would be attested with the wrong source.
+    # Pushed by this run from the workflow commit; provenance names GITHUB_SHA as its source.
     image_attestable: bool = False
     release_tag: str = ""
     release_version: str = ""
@@ -45,7 +42,6 @@ class BuildResult:
             "image_uri": self.image_uri,
             "image_digest": self.image_digest,
             "image_repository": self.image_repository,
-            "image_built": "true" if self.image_built else "false",
             "image_attestable": "true" if self.image_attestable else "false",
             "release_tag": self.release_tag,
             "release_version": self.release_version,
@@ -62,18 +58,9 @@ def execute_build(
     runner: CommandRunner | None = None,
     git_runner: GitRunner = run_git,
     release_tag_resolver: ReleaseTagResolver = release_tag_for_sha,
-    required_kind: str | None = None,
 ) -> BuildResult:
     runner = runner or CommandRunner()
     build = _find_build(config, build_name)
-    # Workflows pin the kind they may run. The image workflow holds the trusted signing
-    # identity, so it must never run a command build (caller code on the runner host),
-    # whatever the caller's configuration says.
-    if required_kind is not None and build.kind != required_kind:
-        raise ConfigError(
-            f"Build {build.name!r} is a {build.kind!r} build; this workflow only runs "
-            f"{required_kind!r} builds"
-        )
     if context.environment not in build.environments:
         raise ConfigError(
             f"Build {build.name!r} is not configured for {context.environment!r}"
@@ -95,13 +82,12 @@ def execute_build(
             ),
         )
 
-    image_repository = ""
-    image_built = False
+    image_repository, built = "", False
     if build.kind == "command":
         image_uri = _execute_command_build(build, config, source_context, runner)
         image_digest = ""
     elif build.kind == "docker":
-        image_repository, image_uri, image_digest, image_built = _execute_docker_build(
+        image_repository, image_uri, image_digest, built = _execute_docker_build(
             build, source_context, runner
         )
     else:
@@ -111,8 +97,9 @@ def execute_build(
         image_uri=image_uri,
         image_digest=image_digest,
         image_repository=image_repository,
-        image_built=image_built,
-        image_attestable=image_built and resolved_source_sha == context.sha,
+        image_attestable=built
+        and bool(image_digest)
+        and resolved_source_sha == context.sha,
         release_tag=source_context.release_tag or "",
         release_version=source_context.release_version,
         source_sha=resolved_source_sha,
@@ -170,12 +157,7 @@ def _execute_command_build(
 def _execute_docker_build(
     build: BuildConfig, context: RuntimeContext, runner: CommandRunner
 ) -> tuple[str, str, str, bool]:
-    """Build and push an image.
-
-    Returns the bare repository, the image URI, the image digest (when known) and
-    whether this run pushed the image. Reused immutable images are not rebuilt, so
-    their provenance belongs to the run that originally built them.
-    """
+    """Return the repository, image URI, digest, and whether this run pushed the image."""
     if build.docker is None:
         raise ConfigError(f"Docker build {build.name!r} has no docker configuration")
     docker = build.docker

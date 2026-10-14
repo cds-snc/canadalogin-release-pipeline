@@ -18,11 +18,7 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
-    # Callers often check out their repository before this step, so the workspace can hold
-    # caller-controlled files. Running a module with -m puts the current directory first on sys.path, so a
-    # top-level `pip` package there would run instead of pip. Run from this action's directory
-    # and in isolated mode (-I: no current directory or user site on sys.path, PYTHON* variables
-    # ignored) so caller files cannot run here, whatever the step order.
+    # Isolated (-I) and outside the workspace, so a caller's top-level `pip` package can't run.
     - name: Install release tooling
       shell: bash
       working-directory: ${{ github.action_path }}

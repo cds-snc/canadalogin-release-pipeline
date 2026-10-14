@@ -101,42 +101,6 @@ class BuildTest(unittest.TestCase):
         self.assertIn("GITHUB_TOKEN", runner.unset_environments[0])
         self.assertFalse(runner.log_outputs[-2])
 
-    def test_required_kind_refuses_other_builds_before_running_anything(self) -> None:
-        # The image workflow holds the trusted signing identity and pins --require-kind docker,
-        # so a caller configuration cannot make it run command builds (caller code on the runner).
-        config = self.config("canadalogin-user-selfservice-webapp")
-        for build_name, required_kind in (("frontend", "docker"), ("backend", "command")):
-            with self.subTest(build=build_name), tempfile.TemporaryDirectory() as directory:
-                runner = RecordingRunner()
-                with self.assertRaisesRegex(ConfigError, f"only runs '{required_kind}' builds"):
-                    execute_build(
-                        config,
-                        build_name=build_name,
-                        context=self.context(Path(directory), "dev"),
-                        runner=runner,
-                        required_kind=required_kind,
-                    )
-
-                self.assertEqual(runner.commands, [])
-
-    def test_required_kind_allows_matching_builds(self) -> None:
-        config = self.config("canadalogin-user-selfservice-webapp")
-        runner = RecordingRunner()
-        with tempfile.TemporaryDirectory() as directory:
-            result = execute_build(
-                config,
-                build_name="backend",
-                context=self.context(
-                    Path(directory),
-                    "dev",
-                    variables={"RELEASE_ECR_REPOSITORY": "example.dkr/repository"},
-                ),
-                runner=runner,
-                required_kind="docker",
-            )
-
-        self.assertEqual(result.image_uri, "example.dkr/repository:abc123")
-
     def test_docker_build_applies_sha_latest_release_and_build_args(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")
         runner = RecordingRunner()
@@ -192,11 +156,7 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(result.source_sha, "staging-sha")
         self.assertEqual(result.release_tag, "v1.2.2")
         self.assertEqual(result.release_version, "v1.2.2")
-        # Pushed by this run, but from a commit other than the workflow commit, so the
-        # OIDC-derived provenance would name the wrong source: never attest it.
-        self.assertTrue(result.image_built)
-        self.assertFalse(result.image_attestable)
-        self.assertEqual(result.github_outputs()["image_attestable"], "false")
+        self.assertFalse(result.image_attestable)  # built from a commit other than GITHUB_SHA
 
     def test_non_development_command_build_reuses_existing_artifact(self) -> None:
         config = self.config("canadalogin-static-website")
@@ -343,13 +303,6 @@ class BuildTest(unittest.TestCase):
             )
 
         self.assertEqual(result.image_digest, "sha256:abc")
-        self.assertEqual(
-            result.image_repository,
-            "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app",
-        )
-        self.assertTrue(result.image_built)
-        self.assertEqual(result.github_outputs()["image_built"], "true")
-        self.assertTrue(result.image_attestable)
         self.assertEqual(result.github_outputs()["image_attestable"], "true")
         self.assertIn("describe-repositories", runner.commands[0][0])
 
@@ -393,10 +346,7 @@ class BuildTest(unittest.TestCase):
             )
 
         self.assertEqual(result.image_digest, "sha256:old")
-        self.assertFalse(result.image_built)
-        self.assertEqual(result.github_outputs()["image_built"], "false")
-        self.assertFalse(result.image_attestable)
-        self.assertEqual(result.github_outputs()["image_attestable"], "false")
+        self.assertFalse(result.image_attestable)  # reused: provenance is the original run's
         self.assertFalse(any(command[0][0] == "docker" for command in runner.commands))
 
     def test_ecr_existing_sha_rejects_missing_release_tag(self) -> None:

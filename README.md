@@ -14,7 +14,7 @@ This repository centralizes the release pipeline used by CanadaLogin application
 - ECR immutable image management
 - S3 build artifacts, S3 deployments, and CloudFront invalidations
 - SBOM integration
-- Signed SLSA build provenance attestations for every newly built container image
+- Signed build provenance attestations for container images, optionally verified before deployment
 - Trivy CRITICAL dependency vulnerability checks on PRs and before every environment deployment
 - Slack start, success, build failure, and deployment failure notifications
 - Repo-defined before-deploy, health-check, after-deploy, and failure hooks
@@ -47,16 +47,7 @@ Commit resolved lockfiles that match the dependencies installed by your builds. 
 
 ## Build provenance attestations
 
-Every container image the pipeline builds from the workflow commit and pushes gets a signed [SLSA v1 build provenance](https://slsa.dev/spec/v1.0/provenance) attestation, generated with GitHub [artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations). Nothing needs to be configured beyond granting `attestations: write` in the caller workflow (see the [example](examples/your-repository-root/.github/workflows/release-pipeline.yml)).
-
-- **What is attested:** the image digest in ECR, bound to the caller repository, commit, workflow run, and the shared pipeline workflow that signed it. Frontend/static S3 artifacts are not attested.
-- **Where it lives:** in the caller repository's attestation store (repository **Actions → Attestations**, or `gh attestation` / the REST API). Public repositories also record the signature in the public Sigstore transparency log. Nothing is pushed to ECR, GitHub Packages, or workflow artifacts.
-- **Who signs:** `release__build-image.yml`, a reusable workflow that builds the image itself and then signs the digest it just pushed. It takes no digest as input, so calling it directly cannot attest an image built anywhere else, and it runs no caller-controlled code on a runner: it only runs Docker builds (Dockerfile steps execute inside BuildKit containers) and installs the release tooling before the caller repository is checked out. Command builds such as npm run in `release__build.yml`, which never signs. A signing certificate identifies the workflow file rather than the job, which is why the two are separate files.
-- **SLSA level:** verifying the signer as the deployment check below does (the `release__build-image.yml` identity, signed by the commit of a released `vX.Y.Z` tag of this repository) gives SLSA Build Level 3 assurances; verifying only `--repo` gives Level 2. This depends on tag rules that let only the release process create, move or delete `vX.Y.Z` tags in this repository.
-- **Not attested:** reused images (an immutable SHA tag that already exists), because this run did not build them, and images built from a commit other than the workflow commit (for example a `workflow_dispatch` rebuild of an environment pinned to an older SHA), because the provenance would name the wrong source commit. If the attestation job fails after an image is pushed, use **Re-run failed jobs** so the original run attests its own image.
-
-
-Deployments can enforce attestations: set `backend.verify_attestations: true` and every backend image must pass [verification](docs/configuration.md#build-provenance-verification) before migrations or ECS updates. It is off by default so applications can adopt it once all images they deploy have been attested.
+Each container image the pipeline builds and pushes from the workflow commit gets a signed [SLSA build provenance](https://docs.github.com/en/actions/concepts/security/artifact-attestations) attestation, stored in the caller repository (**Actions → Attestations**). Callers must grant `attestations: write` (see the [example](examples/your-repository-root/.github/workflows/release-pipeline.yml)). Reused images keep their original attestation; images rebuilt from an older commit and frontend artifacts are not attested. Set `backend.verify_attestations: true` to [verify](docs/configuration.md#build-provenance-verification) images before deployment.
 
 ## Quick start
 
