@@ -53,9 +53,12 @@ ECS_MIGRATION_POLL_INTERVAL_SECONDS = 15
 ECS_MIGRATION_CLEANUP_TIMEOUT_SECONDS = 120
 ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS = 60
 MIGRATION_CONTAINER = "migrations"
-# Build provenance is only trusted when signed by the shared build workflow, which runs no caller code.
+# Build provenance is only trusted when signed by the dedicated attestation workflow, which runs
+# nothing but actions/attest. Do not trust release__build.yml here: a Sigstore certificate names the
+# reusable workflow file, not the job, and that file's build and sbom jobs hold id-token: write while
+# running caller-controlled code, so they could mint certificates with its identity.
 ATTESTATION_SIGNER_WORKFLOW = (
-    "cds-snc/canadalogin-release-pipeline/.github/workflows/release__build.yml"
+    "cds-snc/canadalogin-release-pipeline/.github/workflows/release__attest.yml"
 )
 # The signer identity must also be a released version of that workflow. Without a ref,
 # `gh attestation verify --signer-workflow` accepts any branch, tag or commit of the
@@ -1097,7 +1100,7 @@ def _verify_image_attestation(
 
     The manifest is fetched by digest and hashed locally, so `gh attestation verify`
     checks the same digest ECS will run without needing a registry login. The
-    attestation must come from a released build workflow, on a GitHub-hosted runner,
+    attestation must come from a released attestation workflow, on a GitHub-hosted runner,
     for a main-branch build of `source_sha` (the commit whose tag is being deployed),
     so an attested image cannot be deployed under another commit's tag.
     """

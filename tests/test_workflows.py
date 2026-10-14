@@ -235,14 +235,11 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("needs.build.outputs.image_attestable == 'true'", attest)
         self.assertNotIn("image_built", attest)
         self.assertIn("subject-digest: ${{ needs.build.outputs.image_digest }}", attest)
-        self.assertIn("uses: actions/attest@", attest)
-        # The signing job must never check out or run caller repository content.
-        attest_steps = attest.split("\n    steps:\n", 1)[1]
-        self.assertEqual(attest_steps.count("      - name:"), 1)
-        self.assertNotIn("actions/checkout@", attest)
-        self.assertNotIn("actions/setup", attest)
-        self.assertNotIn("run:", attest)
-        self.assertNotIn("environment:", attest)
+        # Signing is delegated to a dedicated workflow file. A signing certificate names the reusable
+        # workflow file, not the job, and the build and sbom jobs here run caller code with id-token: write.
+        self.assertIn("    uses: ./.github/workflows/release__attest.yml\n", attest)
+        self.assertNotIn("actions/attest@", workflow)
+        self.assertNotIn("steps:", attest)
         # Failure notifications run in their own job, without signing permissions.
         self.assertIn("needs: attest", notify)
         self.assertIn(
@@ -254,6 +251,49 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertNotIn("id-token:", notify)
         self.assertIn("attestations: write\n      contents: write\n      id-token: write", pipeline)
         self.assertIn("attestations: write", example)
+
+    def test_attest_workflow_only_signs(self) -> None:
+        attest = (ROOT / ".github" / "workflows" / "release__attest.yml").read_text()
+        jobs = attest.split("\njobs:\n", 1)[1]
+
+        self.assertIn("on:\n  workflow_call:\n", attest)
+        self.assertIn("\npermissions: {}\n", attest)
+        self.assertEqual(re.findall(r"^  [A-Za-z0-9_-]+:$", jobs, re.MULTILINE), ["  attest:"])
+        self.assertIn(
+            "permissions:\n      attestations: write\n      contents: read\n      id-token: write",
+            jobs,
+        )
+        steps = jobs.split("\n    steps:\n", 1)[1]
+        self.assertEqual(steps.count("      - name:"), 1)
+        self.assertEqual(
+            [reference.rsplit("@", 1)[0] for reference in USES_PATTERN.findall(attest)],
+            ["actions/attest"],
+        )
+        # The signing workflow must never check out, install or run anything else.
+        self.assertNotIn("actions/checkout@", attest)
+        self.assertNotIn("actions/setup", attest)
+        self.assertNotIn("run:", attest)
+        self.assertNotIn("environment:", attest)
+        self.assertNotIn("secrets", attest)
+        self.assertIn("subject-name: ${{ inputs.subject-name }}", steps)
+        self.assertIn("subject-digest: ${{ inputs.subject-digest }}", steps)
+
+    def test_attest_workflow_is_called_only_by_the_build_workflow(self) -> None:
+        callers = [
+            path.name
+            for path in self.workflow_files()
+            if "release__attest.yml" in "".join(USES_PATTERN.findall(path.read_text()))
+        ]
+
+        self.assertEqual(callers, ["release__build.yml"])
+
+    def test_deploy_trusts_only_the_attest_workflow_as_signer(self) -> None:
+        from canadalogin_release.pipeline.deploy import ATTESTATION_SIGNER_WORKFLOW
+
+        self.assertEqual(
+            ATTESTATION_SIGNER_WORKFLOW,
+            "cds-snc/canadalogin-release-pipeline/.github/workflows/release__attest.yml",
+        )
 
     def test_ecs_deploy_steps_can_read_attestations(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release__deploy.yml").read_text()

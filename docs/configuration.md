@@ -254,7 +254,7 @@ After an ECS service update, the deployer polls `describe-services` every 15 sec
 Set `backend.verify_attestations: true` (default: `false`) to require a valid build provenance attestation for every backend image before it is used. The check runs against the exact ECR digest during ECS preflight, migrations, and deployment, so an image that fails verification never reaches a migration task or an ECS service. Verification requires:
 
 - an SLSA v1 provenance attestation for the image's digest, created in this repository on a GitHub-hosted runner;
-- a signer that is a released version of the shared build workflow: `cds-snc/canadalogin-release-pipeline/.github/workflows/release__build.yml` at a `refs/tags/vX.Y.Z` ref (enforced with an anchored `--cert-identity-regex`). Images built while calling the pipeline from a branch or commit SHA do not pass;
+- a signer that is a released version of the dedicated attestation workflow: `cds-snc/canadalogin-release-pipeline/.github/workflows/release__attest.yml` at a `refs/tags/vX.Y.Z` ref (enforced with an anchored `--cert-identity-regex`). The build workflow `release__build.yml` is deliberately not a trusted signer, because its build jobs run caller-controlled code while holding an OIDC token and a signing certificate identifies the workflow file, not the job. Images built while calling the pipeline from a branch or commit SHA do not pass;
 - a build from this repository's `main` branch (`--source-ref refs/heads/main`) of the exact commit being deployed (`--source-digest <sha>`), so an attested image cannot be deployed under a different commit's tag;
 - `ecr:BatchGetImage` on the backend repository for `RELEASE_ECS_ROLE`. The manifest is read by digest and hashed locally, so no registry login is needed.
 

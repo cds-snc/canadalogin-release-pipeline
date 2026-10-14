@@ -307,11 +307,11 @@ jobs:
           --workflow-url "$WORKFLOW_URL"
           --detail "$BUILD_NAME SBOM"
 
-  # SLSA build provenance for container images. This job runs in this shared reusable workflow and executes no
-  # caller-controlled code: it never checks out the caller repository or installs tooling from it, so the signing
-  # identity (job_workflow_ref) is this file rather than the caller's workflow. Keep it that way; anything that needs
-  # the caller repository (such as failure notifications) belongs in a separate job without id-token/attestations.
-  # Verify with an anchored --cert-identity-regex on a released ref of this file; see docs/configuration.md.
+  # SLSA build provenance for container images. Signing is delegated to release__attest.yml, a separate reusable
+  # workflow that runs nothing but actions/attest. A Sigstore certificate names the reusable workflow FILE (its
+  # job_workflow_ref), not the job, and the build and sbom jobs in this file hold id-token: write while running
+  # caller-controlled code, so anything signed with this file's identity cannot be trusted. Deployments verify the
+  # release__attest.yml identity instead; see docs/configuration.md. Do not add jobs that sign directly to this file.
   #
   # Only images this run pushed AND built from GITHUB_SHA are attested. The provenance and signing certificate are
   # derived from the run's OIDC claims (GITHUB_SHA/GITHUB_REF), so an image built from another commit (source-sha)
@@ -323,17 +323,14 @@ jobs:
       needs.build.outputs.image_digest != ''
     needs: build
     name: Attest image build provenance
-    runs-on: ubuntu-latest
     permissions:
       attestations: write
       contents: read
       id-token: write
-    steps:
-      - name: Generate and store build provenance attestation
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-name: ${{ needs.build.outputs.image_repository }}
-          subject-digest: ${{ needs.build.outputs.image_digest }}
+    uses: ./.github/workflows/release__attest.yml
+    with:
+      subject-name: ${{ needs.build.outputs.image_repository }}
+      subject-digest: ${{ needs.build.outputs.image_digest }}
 
   attest-failure-notify:
     if: failure() && needs.attest.result == 'failure' && inputs.notify-failure

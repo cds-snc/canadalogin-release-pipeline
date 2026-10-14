@@ -411,7 +411,7 @@ class DeployTest(unittest.TestCase):
             1,
         )
 
-    def test_attestation_signer_must_be_a_released_build_workflow(self) -> None:
+    def test_attestation_signer_must_be_a_released_attest_workflow(self) -> None:
         pattern = re.compile(ATTESTATION_SIGNER_IDENTITY_REGEX)
         workflow = f"https://github.com/{ATTESTATION_SIGNER_WORKFLOW}"
 
@@ -425,7 +425,9 @@ class DeployTest(unittest.TestCase):
             f"{workflow}@refs/tags/v1.2.4/extra",
             f"{workflow}@0902b1f918c7b76dbad22c964c3939eca685ce3e",
             f"{workflow}.yml@refs/tags/v1.2.4",
-            workflow.replace("release__build.yml", "release__buildXyml") + "@refs/tags/v1.2.4",
+            workflow.replace("release__attest.yml", "release__attestXyml") + "@refs/tags/v1.2.4",
+            # The build workflow runs caller code with id-token: write, so it is never a trusted signer.
+            workflow.replace("release__attest.yml", "release__build.yml") + "@refs/tags/v1.2.4",
             workflow.replace("cds-snc/", "cds-snc-fork/") + "@refs/tags/v1.2.4",
         ):
             with self.subTest(identity=identity):
