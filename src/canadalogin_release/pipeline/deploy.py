@@ -57,6 +57,16 @@ MIGRATION_CONTAINER = "migrations"
 ATTESTATION_SIGNER_WORKFLOW = (
     "cds-snc/canadalogin-release-pipeline/.github/workflows/release__build.yml"
 )
+# The signer identity must also be a released version of that workflow. Without a ref,
+# `gh attestation verify --signer-workflow` accepts any branch, tag or commit of the
+# pipeline repository, so unreviewed branches would count as trusted signers.
+ATTESTATION_SIGNER_IDENTITY_REGEX = (
+    r"^https://github\.com/"
+    + ATTESTATION_SIGNER_WORKFLOW.replace(".", r"\.")
+    + r"@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$"
+)
+# Only images built from the caller repository's main branch may be deployed.
+ATTESTATION_SOURCE_REF = "refs/heads/main"
 ATTESTATION_COMMAND_TIMEOUT_SECONDS = 120
 OCI_MANIFEST_MEDIA_TYPES = (
     "application/vnd.oci.image.index.v1+json",
@@ -929,7 +939,9 @@ def _prepare_ecs(
         desired_image = f"{repository}:{context.sha}"
         desired_image_digest = _ensure_ecr_image(repository, context.sha, runner)
         if deployment.verify_attestations:
-            _verify_image_attestation(repository, desired_image_digest, runner)
+            _verify_image_attestation(
+                repository, desired_image_digest, context.sha, runner
+            )
         for service_config in deployment.services:
             cluster = resolve_reference(service_config.cluster, context)
             service = resolve_reference(service_config.service, context)
@@ -1076,12 +1088,18 @@ def _ensure_ecr_image(
 
 
 def _verify_image_attestation(
-    repository_uri: str, image_digest: str | None, runner: CommandRunner
+    repository_uri: str,
+    image_digest: str | None,
+    source_sha: str,
+    runner: CommandRunner,
 ) -> None:
     """Require a valid build provenance attestation for the exact image digest.
 
     The manifest is fetched by digest and hashed locally, so `gh attestation verify`
-    checks the same digest ECS will run without needing a registry login.
+    checks the same digest ECS will run without needing a registry login. The
+    attestation must come from a released build workflow, on a GitHub-hosted runner,
+    for a main-branch build of `source_sha` (the commit whose tag is being deployed),
+    so an attested image cannot be deployed under another commit's tag.
     """
     registry_id, repository_name = _parse_ecr_repository(repository_uri)
     if not registry_id or not image_digest:
@@ -1092,6 +1110,8 @@ def _verify_image_attestation(
     source_repository = os.environ.get("GITHUB_REPOSITORY", "")
     if not source_repository:
         raise ConfigError("Attestation verification requires GITHUB_REPOSITORY")
+    if not source_sha:
+        raise ConfigError("Attestation verification requires the deployed commit SHA")
     image = f"{repository_uri}@{image_digest}"
     document = _json_command(
         runner,
@@ -1143,8 +1163,14 @@ def _verify_image_attestation(
                 str(manifest_path),
                 "--repo",
                 source_repository,
-                "--signer-workflow",
-                ATTESTATION_SIGNER_WORKFLOW,
+                "--cert-identity-regex",
+                ATTESTATION_SIGNER_IDENTITY_REGEX,
+                "--source-ref",
+                ATTESTATION_SOURCE_REF,
+                "--source-digest",
+                source_sha,
+                "--predicate-type",
+                "https://slsa.dev/provenance/v1",
                 "--deny-self-hosted-runners",
             ],
             check=False,

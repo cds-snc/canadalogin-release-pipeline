@@ -32,6 +32,10 @@ class BuildResult:
     image_digest: str = ""
     image_repository: str = ""
     image_built: bool = False
+    # True only when this run pushed the image AND built it from the workflow commit
+    # (GITHUB_SHA). Build provenance is derived from the run's OIDC claims, so an image
+    # built from any other commit would be attested with the wrong source.
+    image_attestable: bool = False
     release_tag: str = ""
     release_version: str = ""
     source_sha: str = ""
@@ -42,6 +46,7 @@ class BuildResult:
             "image_digest": self.image_digest,
             "image_repository": self.image_repository,
             "image_built": "true" if self.image_built else "false",
+            "image_attestable": "true" if self.image_attestable else "false",
             "release_tag": self.release_tag,
             "release_version": self.release_version,
             "source_sha": self.source_sha,
@@ -98,6 +103,7 @@ def execute_build(
         image_digest=image_digest,
         image_repository=image_repository,
         image_built=image_built,
+        image_attestable=image_built and resolved_source_sha == context.sha,
         release_tag=source_context.release_tag or "",
         release_version=source_context.release_version,
         source_sha=resolved_source_sha,

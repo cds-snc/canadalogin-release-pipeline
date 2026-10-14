@@ -221,20 +221,37 @@ class WorkflowContractTest(unittest.TestCase):
         ).read_text()
         jobs = workflow.split("\njobs:\n", 1)[1]
         build, rest = jobs.split("\n  sbom:\n", 1)
-        sbom, attest = rest.split("\n  attest:\n", 1)
+        sbom, rest = rest.split("\n  attest:\n", 1)
+        attest, notify = rest.split("\n  attest-failure-notify:\n", 1)
 
         self.assertNotIn("attestations:", build)
         self.assertNotIn("attestations:", sbom)
+        self.assertIn("image_attestable: ${{ steps.build.outputs.image_attestable }}", build)
         self.assertIn(
             "permissions:\n      attestations: write\n      contents: read\n      id-token: write",
             attest,
         )
-        self.assertIn("needs.build.outputs.image_built == 'true'", attest)
+        # Only images built from GITHUB_SHA by this run are attested.
+        self.assertIn("needs.build.outputs.image_attestable == 'true'", attest)
+        self.assertNotIn("image_built", attest)
         self.assertIn("subject-digest: ${{ needs.build.outputs.image_digest }}", attest)
         self.assertIn("uses: actions/attest@", attest)
-        # The attestation step must run before any caller repository content is checked out.
-        self.assertLess(attest.index("actions/attest@"), attest.index("actions/checkout@"))
-        self.assertIn("if: failure() && inputs.notify-failure\n        uses: actions/checkout@", attest)
+        # The signing job must never check out or run caller repository content.
+        attest_steps = attest.split("\n    steps:\n", 1)[1]
+        self.assertEqual(attest_steps.count("      - name:"), 1)
+        self.assertNotIn("actions/checkout@", attest)
+        self.assertNotIn("actions/setup", attest)
+        self.assertNotIn("run:", attest)
+        self.assertNotIn("environment:", attest)
+        # Failure notifications run in their own job, without signing permissions.
+        self.assertIn("needs: attest", notify)
+        self.assertIn(
+            "if: failure() && needs.attest.result == 'failure' && inputs.notify-failure",
+            notify,
+        )
+        self.assertIn("permissions:\n      contents: read\n", notify)
+        self.assertNotIn("attestations:", notify)
+        self.assertNotIn("id-token:", notify)
         self.assertIn("attestations: write\n      contents: write\n      id-token: write", pipeline)
         self.assertIn("attestations: write", example)
 

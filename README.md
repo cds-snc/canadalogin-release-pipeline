@@ -47,15 +47,15 @@ Commit resolved lockfiles that match the dependencies installed by your builds. 
 
 ## Build provenance attestations
 
-Every container image the pipeline builds and pushes gets a signed [SLSA v1 build provenance](https://slsa.dev/spec/v1.0/provenance) attestation, generated with GitHub [artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations). Nothing needs to be configured beyond granting `attestations: write` in the caller workflow (see the [example](examples/your-repository-root/.github/workflows/release-pipeline.yml)).
+Every container image the pipeline builds from the workflow commit and pushes gets a signed [SLSA v1 build provenance](https://slsa.dev/spec/v1.0/provenance) attestation, generated with GitHub [artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations). Nothing needs to be configured beyond granting `attestations: write` in the caller workflow (see the [example](examples/your-repository-root/.github/workflows/release-pipeline.yml)).
 
 - **What is attested:** the image digest in ECR, bound to the caller repository, commit, workflow run, and the shared build workflow that produced it. Frontend/static S3 artifacts are not attested.
 - **Where it lives:** in the caller repository's attestation store (repository **Actions → Attestations**, or `gh attestation` / the REST API). Public repositories also record the signature in the public Sigstore transparency log. Nothing is pushed to ECR, GitHub Packages, or workflow artifacts.
-- **SLSA level:** signing happens in a dedicated job of this shared reusable workflow, which runs no caller-controlled code. Verifying with `--signer-workflow` therefore gives SLSA Build Level 3 assurances; verifying only `--repo` gives Level 2.
-- **Reused images** (an immutable SHA tag that already exists) are not re-attested, because this run did not build them. If the attestation job fails after an image is pushed, use **Re-run failed jobs** so the original run attests its own image.
+- **SLSA level:** signing happens in a dedicated job of this shared reusable workflow, which never checks out or runs caller-controlled code. Verifying that the signer is a released version of that workflow (an anchored `--cert-identity-regex`, as the deployment check below does) therefore gives SLSA Build Level 3 assurances; verifying only `--repo` gives Level 2. An unpinned `--signer-workflow` accepts any branch of this repository, so it is weaker than it looks.
+- **Not attested:** reused images (an immutable SHA tag that already exists), because this run did not build them, and images built from a commit other than the workflow commit (for example a `workflow_dispatch` rebuild of an environment pinned to an older SHA), because the provenance would name the wrong source commit. If the attestation job fails after an image is pushed, use **Re-run failed jobs** so the original run attests its own image.
 
 
-Deployments can enforce attestations: set `backend.verify_attestations: true` and every backend image must pass the check above before migrations or ECS updates. It is off by default so applications can adopt it once all images they deploy have been attested.
+Deployments can enforce attestations: set `backend.verify_attestations: true` and every backend image must pass [verification](docs/configuration.md#build-provenance-verification) before migrations or ECS updates. It is off by default so applications can adopt it once all images they deploy have been attested.
 
 ## Quick start
 

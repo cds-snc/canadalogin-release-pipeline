@@ -118,6 +118,7 @@ jobs:
       image_repository: ${{ steps.build.outputs.image_repository }}
       image_digest: ${{ steps.build.outputs.image_digest }}
       image_built: ${{ steps.build.outputs.image_built }}
+      image_attestable: ${{ steps.build.outputs.image_attestable }}
       result: ${{ steps.result.outputs.result }}
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
@@ -307,12 +308,18 @@ jobs:
           --detail "$BUILD_NAME SBOM"
 
   # SLSA build provenance for container images. This job runs in this shared reusable workflow and executes no
-  # caller-controlled code, so the signing identity (job_workflow_ref) is this file rather than the caller's
-  # workflow. Verify with --signer-workflow to get SLSA Build Level 3 assurances; see docs/configuration.md.
+  # caller-controlled code: it never checks out the caller repository or installs tooling from it, so the signing
+  # identity (job_workflow_ref) is this file rather than the caller's workflow. Keep it that way; anything that needs
+  # the caller repository (such as failure notifications) belongs in a separate job without id-token/attestations.
+  # Verify with an anchored --cert-identity-regex on a released ref of this file; see docs/configuration.md.
+  #
+  # Only images this run pushed AND built from GITHUB_SHA are attested. The provenance and signing certificate are
+  # derived from the run's OIDC claims (GITHUB_SHA/GITHUB_REF), so an image built from another commit (source-sha)
+  # would be attested with the wrong source.
   attest:
     if: >-
       needs.build.outputs.result == 'success' &&
-      needs.build.outputs.image_built == 'true' &&
+      needs.build.outputs.image_attestable == 'true' &&
       needs.build.outputs.image_digest != ''
     needs: build
     name: Attest image build provenance
@@ -321,9 +328,6 @@ jobs:
       attestations: write
       contents: read
       id-token: write
-    environment:
-      name: ${{ inputs.github-environment || inputs.environment }}
-      deployment: false
     steps:
       - name: Generate and store build provenance attestation
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -331,19 +335,27 @@ jobs:
           subject-name: ${{ needs.build.outputs.image_repository }}
           subject-digest: ${{ needs.build.outputs.image_digest }}
 
+  attest-failure-notify:
+    if: failure() && needs.attest.result == 'failure' && inputs.notify-failure
+    needs: attest
+    name: Notify attestation failure
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment:
+      name: ${{ inputs.github-environment || inputs.environment }}
+      deployment: false
+    steps:
       - name: Checkout caller repository
-        if: failure() && inputs.notify-failure
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 1
           persist-credentials: false
 
       - name: Set up release tooling
-        if: failure() && inputs.notify-failure
         uses: $/actions/setup
 
       - name: Notify Slack about attestation failure
-        if: failure() && inputs.notify-failure
         env:
           BUILD_ENVIRONMENT: ${{ inputs.target-environment }}
           BUILD_NAME: ${{ inputs.name }}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
 import unittest
@@ -14,6 +15,7 @@ from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.pipeline.deploy import (
+    ATTESTATION_SIGNER_IDENTITY_REGEX,
     ATTESTATION_SIGNER_WORKFLOW,
     _ecs_rollout_failed,
     _ecs_service_diagnostics,
@@ -393,8 +395,14 @@ class DeployTest(unittest.TestCase):
         gh = runner.commands[2]
         self.assertEqual(gh[0:3], ("gh", "attestation", "verify"))
         self.assertEqual(gh[gh.index("--repo") + 1], "cds-snc/example")
+        self.assertNotIn("--signer-workflow", gh)
         self.assertEqual(
-            gh[gh.index("--signer-workflow") + 1], ATTESTATION_SIGNER_WORKFLOW
+            gh[gh.index("--cert-identity-regex") + 1], ATTESTATION_SIGNER_IDENTITY_REGEX
+        )
+        self.assertEqual(gh[gh.index("--source-ref") + 1], "refs/heads/main")
+        self.assertEqual(gh[gh.index("--source-digest") + 1], context.sha)
+        self.assertEqual(
+            gh[gh.index("--predicate-type") + 1], "https://slsa.dev/provenance/v1"
         )
         self.assertIn("--deny-self-hosted-runners", gh)
         self.assertEqual(runner.commands[3][0:3], ("aws", "ecs", "describe-services"))
@@ -402,6 +410,26 @@ class DeployTest(unittest.TestCase):
             sum(command[0:3] == ("gh", "attestation", "verify") for command in runner.commands),
             1,
         )
+
+    def test_attestation_signer_must_be_a_released_build_workflow(self) -> None:
+        pattern = re.compile(ATTESTATION_SIGNER_IDENTITY_REGEX)
+        workflow = f"https://github.com/{ATTESTATION_SIGNER_WORKFLOW}"
+
+        for ref in ("refs/tags/v1.2.4", "refs/tags/v12.0.10"):
+            with self.subTest(ref=ref):
+                self.assertTrue(pattern.match(f"{workflow}@{ref}"))
+        for identity in (
+            f"{workflow}@refs/heads/main",
+            f"{workflow}@refs/heads/feature",
+            f"{workflow}@refs/tags/v1.2.4-rc1",
+            f"{workflow}@refs/tags/v1.2.4/extra",
+            f"{workflow}@0902b1f918c7b76dbad22c964c3939eca685ce3e",
+            f"{workflow}.yml@refs/tags/v1.2.4",
+            workflow.replace("release__build.yml", "release__buildXyml") + "@refs/tags/v1.2.4",
+            workflow.replace("cds-snc/", "cds-snc-fork/") + "@refs/tags/v1.2.4",
+        ):
+            with self.subTest(identity=identity):
+                self.assertIsNone(pattern.match(identity))
 
     def test_failed_attestation_verification_aborts_before_ecs(self) -> None:
         config, context, runner, _ = self.attestation_case(gh_return_code=1)

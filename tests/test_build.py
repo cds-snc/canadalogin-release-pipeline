@@ -156,6 +156,11 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(result.source_sha, "staging-sha")
         self.assertEqual(result.release_tag, "v1.2.2")
         self.assertEqual(result.release_version, "v1.2.2")
+        # Pushed by this run, but from a commit other than the workflow commit, so the
+        # OIDC-derived provenance would name the wrong source: never attest it.
+        self.assertTrue(result.image_built)
+        self.assertFalse(result.image_attestable)
+        self.assertEqual(result.github_outputs()["image_attestable"], "false")
 
     def test_non_development_command_build_reuses_existing_artifact(self) -> None:
         config = self.config("canadalogin-static-website")
@@ -308,6 +313,8 @@ class BuildTest(unittest.TestCase):
         )
         self.assertTrue(result.image_built)
         self.assertEqual(result.github_outputs()["image_built"], "true")
+        self.assertTrue(result.image_attestable)
+        self.assertEqual(result.github_outputs()["image_attestable"], "true")
         self.assertIn("describe-repositories", runner.commands[0][0])
 
     def test_ecr_sha_build_reuses_existing_tag(self) -> None:
@@ -352,6 +359,8 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(result.image_digest, "sha256:old")
         self.assertFalse(result.image_built)
         self.assertEqual(result.github_outputs()["image_built"], "false")
+        self.assertFalse(result.image_attestable)
+        self.assertEqual(result.github_outputs()["image_attestable"], "false")
         self.assertFalse(any(command[0][0] == "docker" for command in runner.commands))
 
     def test_ecr_existing_sha_rejects_missing_release_tag(self) -> None:
