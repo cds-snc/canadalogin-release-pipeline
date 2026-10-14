@@ -74,6 +74,15 @@ concurrency:
   group: canadalogin-release-${{ github.repository }}-${{ inputs.pipeline_id }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || 'deploy' }}
 
 jobs:
+  dependency-vulnerabilities:
+    name: PR dependency vulnerabilities
+    if: github.event_name == 'pull_request' && inputs.planning-event-name == ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security__dependency-vulnerabilities.yml
+    with:
+      sha: ${{ github.event.pull_request.head.sha }}
+
   plan:
     name: Validate and plan
     runs-on: ubuntu-latest
@@ -297,7 +306,7 @@ jobs:
   release_result:
     name: Report release result
     if: always()
-    needs: [plan, release_please, required_builds, deploy]
+    needs: [plan, release_please, required_builds, deploy, dependency-vulnerabilities]
     runs-on: ubuntu-latest
     permissions: {}
     outputs:
@@ -314,6 +323,7 @@ jobs:
           REQUIRED_BUILDS_REPORTED_RESULT: ${{ needs.required_builds.outputs.result }}
           DEPLOY_JOB_RESULT: ${{ needs.deploy.result }}
           DEPLOY_REPORTED_RESULT: ${{ needs.deploy.outputs.result }}
+          DEPENDENCY_VULNERABILITIES_RESULT: ${{ needs.dependency-vulnerabilities.result }}
         run: |
           set -euo pipefail
           required_builds_result="$REQUIRED_BUILDS_JOB_RESULT"
@@ -325,7 +335,7 @@ jobs:
             deploy_result="$DEPLOY_REPORTED_RESULT"
           fi
           release_result=success
-          for job_result in "$PLAN_RESULT" "$RELEASE_PLEASE_RESULT" "$required_builds_result" "$deploy_result"; do
+          for job_result in "$PLAN_RESULT" "$RELEASE_PLEASE_RESULT" "$required_builds_result" "$deploy_result" "$DEPENDENCY_VULNERABILITIES_RESULT"; do
             if [[ "$job_result" == failure || "$job_result" == cancelled ]]; then
               release_result=failure
             fi

@@ -88,8 +88,17 @@ permissions:
   id-token: write
 
 jobs:
+  dependency-vulnerabilities:
+    if: inputs.enabled
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security__dependency-vulnerabilities.yml
+    with:
+      sha: ${{ inputs.sha }}
+
   deploy:
     if: inputs.enabled
+    needs: dependency-vulnerabilities
     name: Deploy
     runs-on: ubuntu-latest
     concurrency:

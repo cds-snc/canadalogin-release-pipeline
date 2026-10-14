@@ -1,0 +1,26 @@
+name: Scan critical dependency vulnerabilities
+description: Fail on known CRITICAL dependency vulnerabilities in the checked-out source.
+
+inputs:
+  policy-sha:
+    description: Caller commit containing the repository-root .trivyignore.yaml.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install Trivy
+      uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+      with:
+        version: v0.75.0
+        cache: false
+
+    - name: Scan dependencies
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      env:
+        SCAN_ROOT: ${{ github.workspace }}
+        SCANNER_ACTION_PATH: ${{ github.action_path }}
+        POLICY_SHA: ${{ inputs.policy-sha }}
+      run: bash "$SCANNER_ACTION_PATH/scan.sh"

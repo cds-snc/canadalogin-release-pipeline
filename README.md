@@ -14,6 +14,7 @@ This repository centralizes the release pipeline used by CanadaLogin application
 - ECR immutable image management
 - S3 build artifacts, S3 deployments, and CloudFront invalidations
 - SBOM integration
+- Trivy CRITICAL dependency vulnerability checks on PRs and before every environment deployment
 - Slack start, success, build failure, and deployment failure notifications
 - Repo-defined before-deploy, health-check, after-deploy, and failure hooks
 - Health checks
@@ -30,6 +31,18 @@ This repository centralizes the release pipeline used by CanadaLogin application
 - Other higher environments are manually incremented as needed. Do so using the usual PR process.
 - GitHub CODEOWNERS or branch rulesets can be used to assign required approvers to deploy to specific environments.
 - Deployments are orchestrated in GitHub Actions and can be viewed from the GitHub Actions tab.
+
+## Dependency vulnerability gates
+
+The shared pipeline adds a **PR dependency vulnerabilities / Critical dependency vulnerabilities** check on every PR, scanning the PR head commit independently of deployment planning. Make this check required in the caller's branch ruleset if it must prevent merging. Existing callers that trigger the release pipeline on `pull_request` need no additional workflow file; callers must upgrade their shared workflow reference to a release containing this gate.
+
+Every enabled environment also requires a fresh successful Trivy scan of **its resolved deployment SHA** before any AWS credentials, preflight, database migration, or deployment job starts. This includes `dev`, pinned releases in higher environments, manual redeploys, and promotions of already-built artifacts. A finding in current `main` does not block an environment deploying a different, clean SHA. No environment setting, `allow-failure`, or old-code override bypasses this gate.
+
+Both checks use the same centrally pinned Trivy version and recursively scan committed dependency files, including nested applications and development dependencies. Known **CRITICAL** findings fail the check, including findings without a fix. Lower severities do not block it. Scanner and vulnerability database errors also fail closed. Findings are available in the scan job's logs. The scanner runs with read-only repository access, no AWS credentials or application secrets, and does not install or execute application dependencies. Caller-owned Trivy configuration and executable ignore policies cannot suppress findings.
+
+If needed, add exceptions using a repository-root `.trivyignore.yaml` ([Trivy format](https://trivy.dev/docs/latest/configuration/filtering/#trivyignoreyaml)). Exceptions always load from the caller workflow's `GITHUB_SHA` (the merge commit for PR checks), even when deploying an older release. The old-code override intentionally uses that older workflow commit's exceptions. If the file is absent, no findings are excluded.
+
+Commit resolved lockfiles that match the dependencies installed by your builds. Native npm, pnpm, uv, Poetry, and other Trivy-supported lockfiles are discovered automatically; pip requirements named `requirements.txt`, `requirements-dev.txt`, `requirements.lock`, and similar variants are also recognized. Comprehensive detection considers minimum-version requirements, but these are estimates: unpinned requirements and missing transitive dependencies cannot establish the exact installed dependency set. This source dependency gate does not scan container base-image OS packages and does not replace image scanning.
 
 ## Quick start
 
@@ -54,12 +67,14 @@ Read the [configuration guide](/docs/configuration.md) for more information on t
 ```mermaid
 flowchart TD
     A[Caller workflow] --> B[Validate and plan]
+    A --> V[PR head dependency scan]
     B --> C[PR deployment impact comment]
     B --> D[release-please]
     D --> E[Required build matrix]
     E --> G[Environment deployment matrix]
-    G --> H[S3 and CloudFront]
-    G --> I[ECS and SSM]
+    G --> S[Scan each environment's deployment SHA]
+    S --> H[S3 and CloudFront]
+    S --> I[ECS and SSM]
     I --> J[Health checks]
     H --> J
 ```
