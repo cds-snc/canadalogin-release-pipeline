@@ -14,6 +14,7 @@ This repository centralizes the release pipeline used by CanadaLogin application
 - ECR immutable image management
 - S3 build artifacts, S3 deployments, and CloudFront invalidations
 - SBOM integration
+- Signed SLSA build provenance attestations for every newly built container image
 - Trivy CRITICAL dependency vulnerability checks on PRs and before every environment deployment
 - Slack start, success, build failure, and deployment failure notifications
 - Repo-defined before-deploy, health-check, after-deploy, and failure hooks
@@ -43,6 +44,18 @@ Both checks use the same centrally pinned Trivy version and recursively scan com
 If needed, add exceptions using a repository-root `.trivyignore.yaml` ([Trivy format](https://trivy.dev/docs/latest/configuration/filtering/#trivyignoreyaml)). Exceptions always load from the caller workflow's `GITHUB_SHA` (the merge commit for PR checks), even when deploying an older release. The old-code override intentionally uses that older workflow commit's exceptions. If the file is absent, no findings are excluded.
 
 Commit resolved lockfiles that match the dependencies installed by your builds. Native npm, pnpm, uv, Poetry, and other Trivy-supported lockfiles are discovered automatically; pip requirements named `requirements.txt`, `requirements-dev.txt`, `requirements.lock`, and similar variants are also recognized. Comprehensive detection considers minimum-version requirements, but these are estimates: unpinned requirements and missing transitive dependencies cannot establish the exact installed dependency set. This source dependency gate does not scan container base-image OS packages and does not replace image scanning.
+
+## Build provenance attestations
+
+Every container image the pipeline builds and pushes gets a signed [SLSA v1 build provenance](https://slsa.dev/spec/v1.0/provenance) attestation, generated with GitHub [artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations). Nothing needs to be configured beyond granting `attestations: write` in the caller workflow (see the [example](examples/your-repository-root/.github/workflows/release-pipeline.yml)).
+
+- **What is attested:** the image digest in ECR, bound to the caller repository, commit, workflow run, and the shared build workflow that produced it. Frontend/static S3 artifacts are not attested.
+- **Where it lives:** in the caller repository's attestation store (repository **Actions → Attestations**, or `gh attestation` / the REST API). Public repositories also record the signature in the public Sigstore transparency log. Nothing is pushed to ECR, GitHub Packages, or workflow artifacts.
+- **SLSA level:** signing happens in a dedicated job of this shared reusable workflow, which runs no caller-controlled code. Verifying with `--signer-workflow` therefore gives SLSA Build Level 3 assurances; verifying only `--repo` gives Level 2.
+- **Reused images** (an immutable SHA tag that already exists) are not re-attested, because this run did not build them. If the attestation job fails after an image is pushed, use **Re-run failed jobs** so the original run attests its own image.
+
+
+Deployments can enforce attestations: set `backend.verify_attestations: true` and every backend image must pass the check above before migrations or ECS updates. It is off by default so applications can adopt it once all images they deploy have been attested.
 
 ## Quick start
 

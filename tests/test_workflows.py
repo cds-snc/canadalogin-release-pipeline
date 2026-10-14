@@ -192,7 +192,7 @@ class WorkflowContractTest(unittest.TestCase):
 
         self.assertIn("name: acceptance-tests\n      deployment: false", acceptance)
         self.assertEqual(acceptance_test.count("deployment: false"), 2)
-        self.assertEqual(build.count("deployment: false"), 2)
+        self.assertEqual(build.count("deployment: false"), 3)
         self.assertIn(
             "deployment: ${{ inputs.github-environment != 'acceptance-tests' }}",
             deploy,
@@ -210,6 +210,44 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn(
             "permissions:\n      contents: write\n      id-token: write", workflow
         )
+
+    def test_only_attest_job_can_write_attestations(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release__build.yml").read_text()
+        pipeline = (
+            ROOT / ".github" / "workflows" / "release__internal-release-pipeline-interface.yml"
+        ).read_text()
+        example = (
+            ROOT / "examples" / "your-repository-root" / ".github" / "workflows" / "release-pipeline.yml"
+        ).read_text()
+        jobs = workflow.split("\njobs:\n", 1)[1]
+        build, rest = jobs.split("\n  sbom:\n", 1)
+        sbom, attest = rest.split("\n  attest:\n", 1)
+
+        self.assertNotIn("attestations:", build)
+        self.assertNotIn("attestations:", sbom)
+        self.assertIn(
+            "permissions:\n      attestations: write\n      contents: read\n      id-token: write",
+            attest,
+        )
+        self.assertIn("needs.build.outputs.image_built == 'true'", attest)
+        self.assertIn("subject-digest: ${{ needs.build.outputs.image_digest }}", attest)
+        self.assertIn("uses: actions/attest@", attest)
+        # The attestation step must run before any caller repository content is checked out.
+        self.assertLess(attest.index("actions/attest@"), attest.index("actions/checkout@"))
+        self.assertIn("if: failure() && inputs.notify-failure\n        uses: actions/checkout@", attest)
+        self.assertIn("attestations: write\n      contents: write\n      id-token: write", pipeline)
+        self.assertIn("attestations: write", example)
+
+    def test_ecs_deploy_steps_can_read_attestations(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release__deploy.yml").read_text()
+
+        self.assertIn("permissions:\n  attestations: read\n  contents: read", workflow)
+        for command in ("preflight-ecs", "migrate-ecs", "deploy-ecs"):
+            with self.subTest(command=command):
+                step = workflow.split(f"canadalogin-release {command}\n", 1)[0]
+                step = step.rsplit("      - name:", 1)[1]
+                self.assertIn("GH_TOKEN: ${{ github.token }}", step)
+        self.assertNotIn("attestations: write", workflow)
 
     def test_actionlint_workflow_lints_workflows(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "ci__actionlint.yml").read_text()

@@ -33,7 +33,7 @@ The supported profiles are:
 - `spa-ecs`: one frontend build published to S3 and one shared Dockerfile-backed ECS image.
 - `static-site`: one static build published to the declared S3 targets, with one target and CloudFront invalidation per site language or domain.
 
-Backend blocks accept `dockerfile`, `build_args`, `services`, and `migrations`. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
+Backend blocks accept `dockerfile`, `build_args`, `services`, `migrations`, and `verify_attestations`. Docker build context is inferred from the Dockerfile's parent directory, so `backend/Dockerfile` uses `backend` as its context. The schema rejects the old `context` key.
 
 Frontend and static-site installs use `npm ci` with the repository lockfile. The pnpm exception uses the declared pnpm version and `--frozen-lockfile`. Node.js defaults to `22`.
 
@@ -199,7 +199,7 @@ Allowed tag modes are:
 - `latest`: `<repository>:latest`
 - `release`: `<repository>:vX.Y.Z`, only when the commit has a release tag
 
-When a Docker repository is an AWS ECR repository and the build publishes `sha` or `release`, the repository must use `IMMUTABLE` or `IMMUTABLE_WITH_EXCLUSION` tag mutability. SHA and release tags are checked before any push; an existing SHA image is reused only when every other non-excluded tag exists and resolves to the same digest. If `latest` is configured, it must be an explicit mutability exclusion. Successful ECR builds record the image digest in their workflow output.
+When a Docker repository is an AWS ECR repository and the build publishes `sha` or `release`, the repository must use `IMMUTABLE` or `IMMUTABLE_WITH_EXCLUSION` tag mutability. SHA and release tags are checked before any push; an existing SHA image is reused only when every other non-excluded tag exists and resolves to the same digest. If `latest` is configured, it must be an explicit mutability exclusion. Successful ECR builds record the image digest in their workflow output. Images pushed by the build (not reused) also receive a signed SLSA build provenance attestation; see [build provenance attestations](../README.md#build-provenance-attestations).
 
 The backend image is built once with the development environment's contract and
 is reused by every deployment environment. An enabled `load_tests` block adds a
@@ -248,6 +248,15 @@ image serves multiple ECS services. The generated contract names are
 Before any S3 or ECS mutation, the environment workflow verifies all S3 artifacts and targets, CloudFront distributions, desired ECR image tags and digests, ECS services, task definitions, containers, and SSM parameter templates. Changed ECS task definitions use the verified ECR digest rather than a mutable tag. Structured ECS responses are consumed without writing them to workflow logs. ECS updates retain the current pipeline's `propagate-tags: SERVICE` behavior. Task-definition tags are not copied because the current deployment roles do not grant the additional tag read/write permissions.
 
 After an ECS service update, the deployer polls `describe-services` every 15 seconds for up to 600 seconds. It fails immediately when ECS reports a failed rollout and includes rollout states, reasons, failed-task counts, service counts, and recent service events in the error. The SSM image pointer is updated only after the service is stable.
+
+### Build provenance verification
+
+Set `backend.verify_attestations: true` (default: `false`) to require a valid build provenance attestation for every backend image before it is used. The check runs against the exact ECR digest during ECS preflight, migrations, and deployment, so an image that fails verification never reaches a migration task or an ECS service. Verification requires:
+
+- an attestation for the image's digest, created in this repository by the shared build workflow (`--signer-workflow cds-snc/canadalogin-release-pipeline/.github/workflows/release__build.yml`) on a GitHub-hosted runner;
+- `ecr:BatchGetImage` on the backend repository for `RELEASE_ECS_ROLE`. The manifest is read by digest and hashed locally, so no registry login is needed.
+
+Leave it off until every image an environment may deploy has been built, not reused, by a pipeline release that attests images.
 
 ### Predeployment database migrations
 

@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from collections.abc import Mapping, Sequence
+import hashlib
 from contextlib import redirect_stdout
 from dataclasses import replace
 from io import StringIO
@@ -13,6 +14,7 @@ from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.pipeline.deploy import (
+    ATTESTATION_SIGNER_WORKFLOW,
     _ecs_rollout_failed,
     _ecs_service_diagnostics,
     _ecs_service_is_stable,
@@ -342,6 +344,92 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(result.unchanged_resources, ("ecs:cluster/service",))
         self.assertNotIn(
             "update-service", " ".join(" ".join(command) for command in runner.commands)
+        )
+
+    def attestation_case(
+        self, gh_return_code: int = 0, manifest: str = '{"schemaVersion":2}'
+    ) -> tuple[PipelineConfig, RuntimeContext, AwsRunner, str]:
+        config = self.config_from_text(
+            MULTI_SERVICE_CONFIG.replace(
+                "    services: [web, worker]\n",
+                "    services: [web, worker]\n    verify_attestations: true\n",
+            )
+        )
+        repository = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app"
+        digest = "sha256:" + hashlib.sha256(b'{"schemaVersion":2}').hexdigest()
+        image = json.dumps(
+            {"imageDetails": [{"imageTags": ["abc123"], "imageDigest": digest}]}
+        )
+        runner = AwsRunner(
+            [
+                (0, image),
+                (0, json.dumps({"images": [{"imageManifest": manifest}], "failures": []})),
+                (gh_return_code, ""),
+            ]
+        )
+        context = self.context(
+            Path("."),
+            {
+                "RELEASE_ECR_REPOSITORY": repository,
+                **{
+                    f"RELEASE_ECS_{service}_{suffix}": f"{service.lower()}-{suffix.lower()}"
+                    for service in ("WEB", "WORKER")
+                    for suffix in ("CLUSTER", "SERVICE", "CONTAINER")
+                },
+            },
+        )
+        return config, context, runner, digest
+
+    def test_attestation_verified_once_per_image_before_ecs_reads(self) -> None:
+        config, context, runner, digest = self.attestation_case()
+
+        with patch.dict("os.environ", {"GITHUB_REPOSITORY": "cds-snc/example"}):
+            with self.assertRaises(ConfigError):
+                # The runner has no ECS responses queued; verification must already be done.
+                deploy_ecs(config, context, runner=runner)
+
+        self.assertEqual(runner.commands[1][0:3], ("aws", "ecr", "batch-get-image"))
+        self.assertIn(f"imageDigest={digest}", runner.commands[1])
+        gh = runner.commands[2]
+        self.assertEqual(gh[0:3], ("gh", "attestation", "verify"))
+        self.assertEqual(gh[gh.index("--repo") + 1], "cds-snc/example")
+        self.assertEqual(
+            gh[gh.index("--signer-workflow") + 1], ATTESTATION_SIGNER_WORKFLOW
+        )
+        self.assertIn("--deny-self-hosted-runners", gh)
+        self.assertEqual(runner.commands[3][0:3], ("aws", "ecs", "describe-services"))
+        self.assertEqual(
+            sum(command[0:3] == ("gh", "attestation", "verify") for command in runner.commands),
+            1,
+        )
+
+    def test_failed_attestation_verification_aborts_before_ecs(self) -> None:
+        config, context, runner, _ = self.attestation_case(gh_return_code=1)
+
+        with patch.dict("os.environ", {"GITHUB_REPOSITORY": "cds-snc/example"}):
+            with self.assertRaisesRegex(ConfigError, "attestation verification failed"):
+                deploy_ecs(config, context, runner=runner)
+
+        self.assertEqual(len(runner.commands), 3)
+
+    def test_manifest_digest_mismatch_aborts_before_gh(self) -> None:
+        config, context, runner, _ = self.attestation_case(manifest='{"tampered":1}')
+
+        with patch.dict("os.environ", {"GITHUB_REPOSITORY": "cds-snc/example"}):
+            with self.assertRaisesRegex(ConfigError, "refusing to verify"):
+                deploy_ecs(config, context, runner=runner)
+
+        self.assertEqual(len(runner.commands), 2)
+
+    def test_attestation_verification_is_off_by_default(self) -> None:
+        config = self.config_from_text(MULTI_SERVICE_CONFIG)
+        _, context, runner, _ = self.attestation_case()
+
+        with self.assertRaises(ConfigError):
+            deploy_ecs(config, context, runner=runner)
+
+        self.assertFalse(
+            any(command[0] == "gh" or "batch-get-image" in command for command in runner.commands)
         )
 
     def test_missing_ecr_image_aborts_before_service_mutation(self) -> None:

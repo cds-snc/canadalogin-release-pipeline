@@ -30,6 +30,8 @@ ReleaseTagResolver = Callable[[PipelineConfig, str, str | Path], str | None]
 class BuildResult:
     image_uri: str = ""
     image_digest: str = ""
+    image_repository: str = ""
+    image_built: bool = False
     release_tag: str = ""
     release_version: str = ""
     source_sha: str = ""
@@ -38,6 +40,8 @@ class BuildResult:
         return {
             "image_uri": self.image_uri,
             "image_digest": self.image_digest,
+            "image_repository": self.image_repository,
+            "image_built": "true" if self.image_built else "false",
             "release_tag": self.release_tag,
             "release_version": self.release_version,
             "source_sha": self.source_sha,
@@ -77,17 +81,23 @@ def execute_build(
             ),
         )
 
+    image_repository = ""
+    image_built = False
     if build.kind == "command":
         image_uri = _execute_command_build(build, config, source_context, runner)
         image_digest = ""
     elif build.kind == "docker":
-        image_uri, image_digest = _execute_docker_build(build, source_context, runner)
+        image_repository, image_uri, image_digest, image_built = _execute_docker_build(
+            build, source_context, runner
+        )
     else:
         raise ConfigError(f"Unsupported build kind {build.kind!r}")
 
     return BuildResult(
         image_uri=image_uri,
         image_digest=image_digest,
+        image_repository=image_repository,
+        image_built=image_built,
         release_tag=source_context.release_tag or "",
         release_version=source_context.release_version,
         source_sha=resolved_source_sha,
@@ -144,7 +154,13 @@ def _execute_command_build(
 
 def _execute_docker_build(
     build: BuildConfig, context: RuntimeContext, runner: CommandRunner
-) -> tuple[str, str]:
+) -> tuple[str, str, str, bool]:
+    """Build and push an image.
+
+    Returns the bare repository, the image URI, the image digest (when known) and
+    whether this run pushed the image. Reused immutable images are not rebuilt, so
+    their provenance belongs to the run that originally built them.
+    """
     if build.docker is None:
         raise ConfigError(f"Docker build {build.name!r} has no docker configuration")
     docker = build.docker
@@ -175,7 +191,7 @@ def _execute_docker_build(
                 f"ECR image {repository}:{context.sha} already exists; "
                 "reusing the immutable image."
             )
-            return f"{repository}:{context.sha}", existing_digest
+            return repository, f"{repository}:{context.sha}", existing_digest, False
         for tag in actual_tags:
             if tag == context.sha or _ecr_tag_is_excluded(tag, exclusion_patterns):
                 continue
@@ -208,8 +224,10 @@ def _execute_docker_build(
     if "sha" in docker.tags and _parse_ecr_repository(repository)[0]:
         image_digest = _ecr_image_digest(repository, context.sha, runner)
     return (
+        repository,
         f"{repository}:{context.sha}" if "sha" in docker.tags else tags[0],
         image_digest,
+        True,
     )
 
 

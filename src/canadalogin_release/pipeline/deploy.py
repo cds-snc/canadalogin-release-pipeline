@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import os
 import tempfile
 import time
 import uuid
@@ -51,6 +53,17 @@ ECS_MIGRATION_POLL_INTERVAL_SECONDS = 15
 ECS_MIGRATION_CLEANUP_TIMEOUT_SECONDS = 120
 ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS = 60
 MIGRATION_CONTAINER = "migrations"
+# Build provenance is only trusted when signed by the shared build workflow, which runs no caller code.
+ATTESTATION_SIGNER_WORKFLOW = (
+    "cds-snc/canadalogin-release-pipeline/.github/workflows/release__build.yml"
+)
+ATTESTATION_COMMAND_TIMEOUT_SECONDS = 120
+OCI_MANIFEST_MEDIA_TYPES = (
+    "application/vnd.oci.image.index.v1+json",
+    "application/vnd.oci.image.manifest.v1+json",
+    "application/vnd.docker.distribution.manifest.list.v2+json",
+    "application/vnd.docker.distribution.manifest.v2+json",
+)
 
 
 @dataclass(frozen=True)
@@ -538,6 +551,7 @@ def _ecs_deployment_summary(deployment: Mapping[str, Any]) -> str:
 
 # This method validates that:
 # - The ECR image tagged with the planned deployment SHA exists.
+# - When backend.verify_attestations is enabled, that image digest has a valid build provenance attestation.
 # - ECS services, their task definitions, and configured containers are accessible.
 # - Configured SSM parameter names resolve to non-empty values.
 def preflight_ecs(
@@ -914,6 +928,8 @@ def _prepare_ecs(
         repository = resolve_reference(deployment.repository, context)
         desired_image = f"{repository}:{context.sha}"
         desired_image_digest = _ensure_ecr_image(repository, context.sha, runner)
+        if deployment.verify_attestations:
+            _verify_image_attestation(repository, desired_image_digest, runner)
         for service_config in deployment.services:
             cluster = resolve_reference(service_config.cluster, context)
             service = resolve_reference(service_config.service, context)
@@ -1057,6 +1073,91 @@ def _ensure_ecr_image(
             f"ECR image {repository_uri}:{image_tag} returned no image digest"
         )
     return image_digest if isinstance(image_digest, str) else None
+
+
+def _verify_image_attestation(
+    repository_uri: str, image_digest: str | None, runner: CommandRunner
+) -> None:
+    """Require a valid build provenance attestation for the exact image digest.
+
+    The manifest is fetched by digest and hashed locally, so `gh attestation verify`
+    checks the same digest ECS will run without needing a registry login.
+    """
+    registry_id, repository_name = _parse_ecr_repository(repository_uri)
+    if not registry_id or not image_digest:
+        raise ConfigError(
+            "Attestation verification requires an ECR image digest for "
+            f"{repository_uri}"
+        )
+    source_repository = os.environ.get("GITHUB_REPOSITORY", "")
+    if not source_repository:
+        raise ConfigError("Attestation verification requires GITHUB_REPOSITORY")
+    image = f"{repository_uri}@{image_digest}"
+    document = _json_command(
+        runner,
+        [
+            "aws",
+            "ecr",
+            "batch-get-image",
+            "--registry-id",
+            registry_id,
+            "--repository-name",
+            repository_name,
+            "--image-ids",
+            f"imageDigest={image_digest}",
+            "--accepted-media-types",
+            *OCI_MANIFEST_MEDIA_TYPES,
+            "--output",
+            "json",
+        ],
+    )
+    images = document.get("images")
+    image_document = (
+        images[0] if isinstance(images, list) and len(images) == 1 else None
+    )
+    manifest = (
+        image_document.get("imageManifest")
+        if isinstance(image_document, Mapping)
+        else None
+    )
+    if not isinstance(manifest, str) or not manifest:
+        raise ConfigError(
+            f"Unable to read the manifest of {image} (requires ecr:BatchGetImage): "
+            f"{document.get('failures')!r}"
+        )
+    manifest_bytes = manifest.encode("utf-8")
+    actual_digest = f"sha256:{hashlib.sha256(manifest_bytes).hexdigest()}"
+    if actual_digest != image_digest:
+        raise ConfigError(
+            f"Manifest of {image} hashes to {actual_digest}; "
+            "refusing to verify a different digest"
+        )
+    with tempfile.TemporaryDirectory() as directory:
+        manifest_path = Path(directory) / "manifest.json"
+        manifest_path.write_bytes(manifest_bytes)
+        result = runner.run(
+            [
+                "gh",
+                "attestation",
+                "verify",
+                str(manifest_path),
+                "--repo",
+                source_repository,
+                "--signer-workflow",
+                ATTESTATION_SIGNER_WORKFLOW,
+                "--deny-self-hosted-runners",
+            ],
+            check=False,
+            log_output=False,
+            timeout=ATTESTATION_COMMAND_TIMEOUT_SECONDS,
+        )
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip() or (result.stdout or "").strip()
+        raise ConfigError(
+            f"Build provenance attestation verification failed for {image}"
+            + (f": {detail}" if detail else "")
+        )
+    log(f"Verified build provenance attestation for {image}.")
 
 
 def _parse_ecr_repository(repository_uri: str) -> tuple[str, str]:

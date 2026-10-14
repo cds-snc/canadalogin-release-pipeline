@@ -179,6 +179,7 @@ class DeploymentConfig:
     repository: ValueReference | None = None
     services: tuple[EcsServiceConfig, ...] = ()
     migrations: bool = False
+    verify_attestations: bool = False
 
 
 @dataclass(frozen=True)
@@ -340,9 +341,14 @@ def _parse_v2_backend(
 ) -> tuple[BuildConfig, DeploymentConfig]:
     backend_raw = _required_mapping(raw, "backend", "backend")
     _reject_unknown(
-        backend_raw, {"dockerfile", "build_args", "services", "migrations"}, "backend"
+        backend_raw,
+        {"dockerfile", "build_args", "services", "migrations", "verify_attestations"},
+        "backend",
     )
     migrations = _optional_bool(backend_raw, "migrations", False, "backend.migrations")
+    verify_attestations = _optional_bool(
+        backend_raw, "verify_attestations", False, "backend.verify_attestations"
+    )
     dockerfile = Path(_required_string(backend_raw, "dockerfile", "backend.dockerfile"))
     build_args_raw = _optional_mapping(backend_raw, "build_args", "backend.build_args")
     build_args = {
@@ -398,6 +404,7 @@ def _parse_v2_backend(
             repository=_contract_reference("RELEASE_ECR_REPOSITORY"),
             services=services,
             migrations=migrations,
+            verify_attestations=verify_attestations,
         ),
     )
 

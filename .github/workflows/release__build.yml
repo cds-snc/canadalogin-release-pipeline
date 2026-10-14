@@ -115,6 +115,9 @@ jobs:
       id-token: write
     outputs:
       image_uri: ${{ steps.build.outputs.image_uri }}
+      image_repository: ${{ steps.build.outputs.image_repository }}
+      image_digest: ${{ steps.build.outputs.image_digest }}
+      image_built: ${{ steps.build.outputs.image_built }}
       result: ${{ steps.result.outputs.result }}
     environment:
       name: ${{ inputs.github-environment || inputs.environment }}
@@ -302,3 +305,63 @@ jobs:
           --sha "$GITHUB_SHA"
           --workflow-url "$WORKFLOW_URL"
           --detail "$BUILD_NAME SBOM"
+
+  # SLSA build provenance for container images. This job runs in this shared reusable workflow and executes no
+  # caller-controlled code, so the signing identity (job_workflow_ref) is this file rather than the caller's
+  # workflow. Verify with --signer-workflow to get SLSA Build Level 3 assurances; see docs/configuration.md.
+  attest:
+    if: >-
+      needs.build.outputs.result == 'success' &&
+      needs.build.outputs.image_built == 'true' &&
+      needs.build.outputs.image_digest != ''
+    needs: build
+    name: Attest image build provenance
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    environment:
+      name: ${{ inputs.github-environment || inputs.environment }}
+      deployment: false
+    steps:
+      - name: Generate and store build provenance attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ needs.build.outputs.image_repository }}
+          subject-digest: ${{ needs.build.outputs.image_digest }}
+
+      - name: Checkout caller repository
+        if: failure() && inputs.notify-failure
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up release tooling
+        if: failure() && inputs.notify-failure
+        uses: $/actions/setup
+
+      - name: Notify Slack about attestation failure
+        if: failure() && inputs.notify-failure
+        env:
+          BUILD_ENVIRONMENT: ${{ inputs.target-environment }}
+          BUILD_NAME: ${{ inputs.name }}
+          CONFIG_PATH: ${{ inputs.config-path }}
+          RELEASE_PIPELINE_VARS: ${{ inputs.release-pipeline-vars || toJSON(vars) }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_1 }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_2: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_2 }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_3: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_3 }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_4: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_4 }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_5: ${{ secrets.RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_5 }}
+          RELEASE_PIPELINE_DEPLOY_ALERTS_SLACK_WEBHOOK_OVERRIDE: ${{ inputs.alert-webhook-override }}
+        run: >-
+          canadalogin-release notify
+          --status build-failure
+          --config "$CONFIG_PATH"
+          --environment "$BUILD_ENVIRONMENT"
+          --sha "$GITHUB_SHA"
+          --workflow-url "$WORKFLOW_URL"
+          --detail "$BUILD_NAME provenance attestation"

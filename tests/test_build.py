@@ -302,6 +302,12 @@ class BuildTest(unittest.TestCase):
             )
 
         self.assertEqual(result.image_digest, "sha256:abc")
+        self.assertEqual(
+            result.image_repository,
+            "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app",
+        )
+        self.assertTrue(result.image_built)
+        self.assertEqual(result.github_outputs()["image_built"], "true")
         self.assertIn("describe-repositories", runner.commands[0][0])
 
     def test_ecr_sha_build_reuses_existing_tag(self) -> None:
@@ -344,6 +350,8 @@ class BuildTest(unittest.TestCase):
             )
 
         self.assertEqual(result.image_digest, "sha256:old")
+        self.assertFalse(result.image_built)
+        self.assertEqual(result.github_outputs()["image_built"], "false")
         self.assertFalse(any(command[0][0] == "docker" for command in runner.commands))
 
     def test_ecr_existing_sha_rejects_missing_release_tag(self) -> None:
