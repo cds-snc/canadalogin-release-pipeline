@@ -61,6 +61,7 @@ on:
 
 permissions:
   actions: read
+  attestations: write
   contents: write
   id-token: write
   issues: write
@@ -145,6 +146,7 @@ jobs:
     needs: infrastructure
     permissions:
       actions: read
+      attestations: write
       contents: write
       id-token: write
       issues: write

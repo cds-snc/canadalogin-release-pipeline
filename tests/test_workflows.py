@@ -30,6 +30,24 @@ class WorkflowContractTest(unittest.TestCase):
                     failures.append(f"{path}: {reference} is not pinned to a full SHA")
         self.assertEqual(failures, [])
 
+    def test_build_attests_images_and_deploy_can_verify_them(self) -> None:
+        workflows = ROOT / ".github" / "workflows"
+        build = (workflows / "release__build.yml").read_text().split("\n  sbom:\n")[0]
+        setup = (ROOT / "actions" / "setup" / "action.yml").read_text()
+
+        self.assertIn("attestations: write\n      contents: read\n      id-token: write", build)
+        self.assertIn("steps.build.outputs.image_attestable == 'true'", build)
+        self.assertIn("uses: actions/attest@", build)
+        self.assertIn("attestations: read", (workflows / "release__deploy.yml").read_text())
+        example = ROOT / "examples" / "your-repository-root" / ".github" / "workflows"
+        for path in (
+            workflows / "release__internal-release-pipeline-interface.yml",
+            example / "release-pipeline.yml",
+        ):
+            self.assertIn("attestations: write", path.read_text())
+        # A caller's top-level `pip` package in the workspace must not shadow pip.
+        self.assertEqual(setup.count("python -I -m pip"), 2)
+
     def test_unit_test_check_has_an_explicit_user_facing_name(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "ci__unit-tests.yml").read_text()
 

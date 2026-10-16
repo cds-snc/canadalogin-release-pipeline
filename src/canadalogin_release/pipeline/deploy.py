@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
+import os
 import tempfile
 import time
 import uuid
@@ -51,6 +53,9 @@ ECS_MIGRATION_POLL_INTERVAL_SECONDS = 15
 ECS_MIGRATION_CLEANUP_TIMEOUT_SECONDS = 120
 ECS_MIGRATION_COMMAND_TIMEOUT_SECONDS = 60
 MIGRATION_CONTAINER = "migrations"
+ATTESTATION_SIGNER_WORKFLOW = (
+    "cds-snc/canadalogin-release-pipeline/.github/workflows/release__build.yml"
+)
 
 
 @dataclass(frozen=True)
@@ -914,6 +919,10 @@ def _prepare_ecs(
         repository = resolve_reference(deployment.repository, context)
         desired_image = f"{repository}:{context.sha}"
         desired_image_digest = _ensure_ecr_image(repository, context.sha, runner)
+        if deployment.verify_attestations:
+            _verify_image_attestation(
+                repository, desired_image_digest, context.sha, runner
+            )
         for service_config in deployment.services:
             cluster = resolve_reference(service_config.cluster, context)
             service = resolve_reference(service_config.service, context)
@@ -1057,6 +1066,57 @@ def _ensure_ecr_image(
             f"ECR image {repository_uri}:{image_tag} returned no image digest"
         )
     return image_digest if isinstance(image_digest, str) else None
+
+
+def _verify_image_attestation(
+    repository_uri: str, digest: str | None, sha: str, runner: CommandRunner
+) -> None:
+    """Require build provenance from the pipeline for a main-branch build of `sha`.
+
+    The manifest is read by digest and hashed locally, so gh verifies the exact digest
+    ECS will run without a registry login.
+    """
+    registry_id, repository_name = _parse_ecr_repository(repository_uri)
+    if not registry_id or not digest:
+        raise ConfigError(f"Attestation needs an ECR image digest: {repository_uri}")
+    image = f"{repository_uri}@{digest}"
+    document = _json_command(
+        runner,
+        ["aws", "ecr", "batch-get-image", "--registry-id", registry_id,
+         "--repository-name", repository_name, "--image-ids", f"imageDigest={digest}",
+         "--accepted-media-types", "application/vnd.oci.image.index.v1+json",
+         "application/vnd.oci.image.manifest.v1+json",
+         "application/vnd.docker.distribution.manifest.list.v2+json",
+         "application/vnd.docker.distribution.manifest.v2+json", "--output", "json"],
+    )  # fmt: skip
+    # ECR lists a digest once per tag (e.g. the SHA tag and latest); all must match.
+    manifests = {
+        entry.get("imageManifest", "").encode("utf-8")
+        for entry in document.get("images") or []
+        if isinstance(entry, Mapping)
+    }
+    if not manifests or any(
+        f"sha256:{hashlib.sha256(manifest).hexdigest()}" != digest
+        for manifest in manifests
+    ):
+        raise ConfigError(f"Unable to read a manifest matching {image}")
+    with tempfile.TemporaryDirectory() as directory:
+        manifest_path = Path(directory) / "manifest.json"
+        manifest_path.write_bytes(manifests.pop())
+        result = runner.run(
+            ["gh", "attestation", "verify", str(manifest_path),
+             "--repo", os.environ.get("GITHUB_REPOSITORY", ""),
+             "--signer-workflow", ATTESTATION_SIGNER_WORKFLOW,
+             "--source-ref", "refs/heads/main", "--source-digest", sha,
+             "--deny-self-hosted-runners"],
+            check=False,
+            log_output=False,
+            timeout=120,
+        )  # fmt: skip
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise ConfigError(f"Build provenance verification failed for {image}: {detail}")
+    log(f"Verified build provenance for {image}.")
 
 
 def _parse_ecr_repository(repository_uri: str) -> tuple[str, str]:

@@ -84,6 +84,7 @@ on:
         value: ${{ jobs.deploy.outputs.result }}
 
 permissions:
+  attestations: read
   contents: read
   id-token: write
 
@@ -201,6 +202,7 @@ jobs:
       - name: Preflight ECR images and ECS services
         if: inputs.ecs-role != ''
         env:
+          GH_TOKEN: ${{ github.token }}
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ inputs.aws-region }}
           CONFIG_PATH: ${{ inputs.config-path }}
@@ -216,6 +218,7 @@ jobs:
         if: inputs.ecs-role != ''
         id: migrate-ecs
         env:
+          GH_TOKEN: ${{ github.token }}
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ inputs.aws-region }}
           CONFIG_PATH: ${{ inputs.config-path }}
@@ -262,6 +265,7 @@ jobs:
         id: deploy-ecs
         continue-on-error: ${{ inputs.allow-failure }}
         env:
+          GH_TOKEN: ${{ github.token }}
           AWS_ACCOUNT_ID: ${{ inputs.aws-account-id || vars.AWS_ACCOUNT_ID }}
           AWS_REGION: ${{ inputs.aws-region }}
           CONFIG_PATH: ${{ inputs.config-path }}

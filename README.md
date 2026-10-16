@@ -14,6 +14,7 @@ This repository centralizes the release pipeline used by CanadaLogin application
 - ECR immutable image management
 - S3 build artifacts, S3 deployments, and CloudFront invalidations
 - SBOM integration
+- Signed build provenance attestations for container images, optionally verified before deployment
 - Trivy CRITICAL dependency vulnerability checks on PRs and before every environment deployment
 - Slack start, success, build failure, and deployment failure notifications
 - Repo-defined before-deploy, health-check, after-deploy, and failure hooks
@@ -43,6 +44,10 @@ Both checks use the same centrally pinned Trivy version and recursively scan com
 If needed, add exceptions using a repository-root `.trivyignore.yaml` ([Trivy format](https://trivy.dev/docs/latest/configuration/filtering/#trivyignoreyaml)). Exceptions always load from the caller workflow's `GITHUB_SHA` (the merge commit for PR checks), even when deploying an older release. The old-code override intentionally uses that older workflow commit's exceptions. If the file is absent, no findings are excluded.
 
 Commit resolved lockfiles that match the dependencies installed by your builds. Native npm, pnpm, uv, Poetry, and other Trivy-supported lockfiles are discovered automatically; pip requirements named `requirements.txt`, `requirements-dev.txt`, `requirements.lock`, and similar variants are also recognized. Comprehensive detection considers minimum-version requirements, but these are estimates: unpinned requirements and missing transitive dependencies cannot establish the exact installed dependency set. This source dependency gate does not scan container base-image OS packages and does not replace image scanning.
+
+## Build provenance attestations
+
+Each container image the pipeline builds and pushes from the workflow commit gets a signed [SLSA build provenance](https://docs.github.com/en/actions/concepts/security/artifact-attestations) attestation, stored in the caller repository (**Actions → Attestations**). Callers must grant `attestations: write` (see the [example](examples/your-repository-root/.github/workflows/release-pipeline.yml)). Reused images keep their original attestation; images rebuilt from an older commit and frontend artifacts are not attested. Set `backend.verify_attestations: true` to [verify](docs/configuration.md#build-provenance-verification) images before deployment.
 
 ## Quick start
 

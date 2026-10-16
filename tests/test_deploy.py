@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import tempfile
@@ -13,6 +14,7 @@ from unittest.mock import patch
 
 from canadalogin_release.config import ConfigError, PipelineConfig
 from canadalogin_release.pipeline.deploy import (
+    ATTESTATION_SIGNER_WORKFLOW,
     _ecs_rollout_failed,
     _ecs_service_diagnostics,
     _ecs_service_is_stable,
@@ -343,6 +345,64 @@ class DeployTest(unittest.TestCase):
         self.assertNotIn(
             "update-service", " ".join(" ".join(command) for command in runner.commands)
         )
+
+    def verify_attestation(self, images: list[object], gh_code: int = 0) -> AwsRunner:
+        config = self.config_from_text(
+            MULTI_SERVICE_CONFIG.replace(
+                "    services: [web, worker]\n",
+                "    services: [web, worker]\n    verify_attestations: true\n",
+            )
+        )
+        digest = "sha256:" + hashlib.sha256(b"{}").hexdigest()
+        details = {"imageDetails": [{"imageTags": ["abc123"], "imageDigest": digest}]}
+        runner = AwsRunner(
+            [(0, json.dumps(details)), (0, json.dumps({"images": images})), (gh_code, "")]
+        )
+        context = self.context(
+            Path("."),
+            {
+                "RELEASE_ECR_REPOSITORY": "123456789012.dkr.ecr.ca-central-1.amazonaws.com/app",
+                **{
+                    f"RELEASE_ECS_{service}_{suffix}": "value"
+                    for service in ("WEB", "WORKER")
+                    for suffix in ("CLUSTER", "SERVICE", "CONTAINER")
+                },
+            },
+        )
+        # No ECS responses are queued, so even a passing check ends in an ECS error.
+        with (
+            patch.dict("os.environ", {"GITHUB_REPOSITORY": "cds-snc/example"}),
+            self.assertRaises(ConfigError),
+        ):
+            deploy_ecs(config, context, runner=runner)
+        return runner
+
+    def test_attestation_is_verified_before_any_ecs_call(self) -> None:
+        # ECR lists one entry per tag (SHA and latest) for the same digest.
+        runner = self.verify_attestation([{"imageManifest": "{}"}] * 2)
+
+        gh = runner.commands[2]
+        self.assertEqual(gh[:3], ("gh", "attestation", "verify"))
+        for flag, value in (
+            ("--repo", "cds-snc/example"),
+            ("--signer-workflow", ATTESTATION_SIGNER_WORKFLOW),
+            ("--source-ref", "refs/heads/main"),
+            ("--source-digest", "abc123"),
+        ):
+            self.assertEqual(gh[gh.index(flag) + 1], value)
+        self.assertIn("--deny-self-hosted-runners", gh)
+        self.assertEqual(runner.commands[3][:3], ("aws", "ecs", "describe-services"))
+
+    def test_failed_attestation_checks_stop_before_ecs(self) -> None:
+        valid, tampered = {"imageManifest": "{}"}, {"imageManifest": '{"x":1}'}
+        for images, gh_code, commands in (
+            ([], 0, 2),  # nothing readable
+            ([valid, tampered], 0, 2),  # a manifest that doesn't hash to the digest
+            ([valid], 1, 3),  # gh rejects the attestation
+        ):
+            with self.subTest(images=images, gh_code=gh_code):
+                runner = self.verify_attestation(images, gh_code)
+                self.assertEqual(len(runner.commands), commands)
 
     def test_missing_ecr_image_aborts_before_service_mutation(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")

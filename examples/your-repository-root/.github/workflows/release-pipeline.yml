@@ -29,6 +29,7 @@ name: Release pipeline
         default: false
         type: boolean
 permissions:
+  attestations: write
   contents: write
   issues: write
   pull-requests: write
