@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.2.4...v1.3.0) (2026-10-16)
+
+
+### Features
+
+* Gate PRs and deployments on critical dependency vulnerabilities ([#92](https://github.com/cds-snc/canadalogin-release-pipeline/issues/92)) ([d73fdea](https://github.com/cds-snc/canadalogin-release-pipeline/commit/d73fdea9c6ad5cf514bdd6cfe20e3a4f3771320f))
+* Implement backend artifact attestations ([#93](https://github.com/cds-snc/canadalogin-release-pipeline/issues/93)) ([57c1270](https://github.com/cds-snc/canadalogin-release-pipeline/commit/57c127029c1b2f004b3109fe891e6174f198c6eb))
+* Pre-deployment migrations ([#87](https://github.com/cds-snc/canadalogin-release-pipeline/issues/87)) ([863c650](https://github.com/cds-snc/canadalogin-release-pipeline/commit/863c650babe80b7d685d383bed23f36fd3d9fc9a))
+* Prevent stale releases ([#91](https://github.com/cds-snc/canadalogin-release-pipeline/issues/91)) ([2217ac8](https://github.com/cds-snc/canadalogin-release-pipeline/commit/2217ac824b3dc8169c8072a14a87edca1a90f6d3))
+
+
+### Bug Fixes
+
+* pin reusable workflow tag directly ([#84](https://github.com/cds-snc/canadalogin-release-pipeline/issues/84)) ([a4354b3](https://github.com/cds-snc/canadalogin-release-pipeline/commit/a4354b3ba75bb7c8a81c3cadd71483a5da10c43a))
+
 ## [1.2.4](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.2.3...v1.2.4) (2026-09-08)
 
 
