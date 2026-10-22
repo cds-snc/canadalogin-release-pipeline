@@ -172,6 +172,12 @@ jobs:
         if: inputs.kind == 'docker'
         uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
 
+      - name: Log in to Amazon ECR Public
+        if: inputs.kind == 'docker'
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+        with:
+          registry-type: public
+
       - name: Build and publish artifact
         id: build
         continue-on-error: ${{ inputs.allow-failure }}
@@ -276,6 +282,12 @@ jobs:
       - name: Log in to Amazon ECR
         if: inputs.kind == 'docker'
         uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+
+      - name: Log in to Amazon ECR Public
+        if: inputs.kind == 'docker'
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+        with:
+          registry-type: public
 
       - name: Generate image SBOM
         uses: cds-snc/security-tools/.github/actions/generate-sbom@d123fa2b895f7ef5b400fad333d2101b103b2e64 # v4.0.4
