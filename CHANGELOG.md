@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.0](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.3.0...v2.0.0) (2026-10-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* authenticate public ECR pulls ([#94](https://github.com/cds-snc/canadalogin-release-pipeline/issues/94))
+
+### Bug Fixes
+
+* authenticate public ECR pulls ([2f441d3](https://github.com/cds-snc/canadalogin-release-pipeline/commit/2f441d32616aad7d8f8b50162a03d07cbaad905c))
+* authenticate public ECR pulls ([#94](https://github.com/cds-snc/canadalogin-release-pipeline/issues/94)) ([2f441d3](https://github.com/cds-snc/canadalogin-release-pipeline/commit/2f441d32616aad7d8f8b50162a03d07cbaad905c))
+
 ## [1.3.0](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.2.4...v1.3.0) (2026-10-16)
 
 
