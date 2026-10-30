@@ -304,8 +304,8 @@ def verify_ecs(resources: Mapping[str, str], release_sha: str, digest: str) -> N
     parameter_value = parameter.get("Parameter", {})
     require(
         isinstance(parameter_value, dict)
-        and parameter_value.get("Value") == f"{resources['ecr_uri']}:{release_sha}",
-        "The ECS SSM image pointer does not identify the tested release.",
+        and parameter_value.get("Value") == app_containers[0]["image"],
+        "The ECS SSM image pointer does not match the deployed image reference.",
     )
 
 
@@ -430,7 +430,7 @@ def verify_deploy_failure(context: VerificationContext) -> None:
     )
     require(context.deploy_result == "failure", "The deployment job did not fail.")
     resources = resolve_resources(context.resources, context.account_id, context.region)
-    verify_ecr(resources, context.release_sha)
+    digest = verify_ecr(resources, context.release_sha)
 
     parameter = aws_json(
         "ssm",
@@ -440,7 +440,11 @@ def verify_deploy_failure(context: VerificationContext) -> None:
     ).get("Parameter", {})
     require(
         isinstance(parameter, dict)
-        and parameter.get("Value") != f"{resources['ecr_uri']}:{context.release_sha}",
+        and parameter.get("Value")
+        not in {
+            f"{resources['ecr_uri']}:{context.release_sha}",
+            f"{resources['ecr_uri']}@{digest}",
+        },
         "The failed ECS rollout updated the image pointer.",
     )
     verify_failure_alert(context, "deploy")

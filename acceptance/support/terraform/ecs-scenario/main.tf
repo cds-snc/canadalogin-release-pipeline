@@ -274,7 +274,7 @@ data "aws_iam_policy_document" "github_actions" {
   statement {
     sid       = "EcsTaskDefinitionTag"
     effect    = "Allow"
-    actions   = ["ecs:TagResource"]
+    actions   = ["ecs:ListTagsForResource", "ecs:TagResource"]
     resources = [local.ecs_task_definition_arn, local.ecs_service_arn]
   }
 
