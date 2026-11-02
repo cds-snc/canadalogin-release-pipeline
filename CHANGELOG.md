@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v2.0.0...v2.0.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* preserve ECS deployment metadata ([#96](https://github.com/cds-snc/canadalogin-release-pipeline/issues/96)) ([4bdc2bf](https://github.com/cds-snc/canadalogin-release-pipeline/commit/4bdc2bfa86b44e6e3df1d86e8c49992160e49f32))
+
 ## [2.0.0](https://github.com/cds-snc/canadalogin-release-pipeline/compare/v1.3.0...v2.0.0) (2026-10-22)
 
 
