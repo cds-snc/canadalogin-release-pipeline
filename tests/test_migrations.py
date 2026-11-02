@@ -143,7 +143,8 @@ class MigrationTest(unittest.TestCase):
                     {
                         "taskDefinition": MIGRATION_DEFINITION
                         if definition is None
-                        else definition
+                        else definition,
+                        "tags": [{"key": "purpose", "value": "migration"}],
                     }
                 ),
             )
@@ -233,6 +234,17 @@ class MigrationTest(unittest.TestCase):
         self.assertNotIn("healthCheck", container)
         self.assertNotIn("restartPolicy", container)
         self.assertNotIn("revision", registration)
+        self.assertEqual(
+            registration["tags"], [{"key": "purpose", "value": "migration"}]
+        )
+        source_command = next(
+            command
+            for command in runner.commands
+            if "describe-task-definition" in command
+            and command[command.index("--task-definition") + 1] == "app-migrations"
+        )
+        self.assertIn("--include", source_command)
+        self.assertIn("TAGS", source_command)
         command = next(command for command in runner.commands if "run-task" in command)
         self.assertIn("FARGATE", command)
         self.assertEqual(

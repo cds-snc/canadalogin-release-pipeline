@@ -21,6 +21,7 @@ from canadalogin_release.pipeline.deploy import (
     deploy_ecs,
     deploy_s3,
 )
+from canadalogin_release.support.commands import CommandError
 from canadalogin_release.support.runtime import RuntimeContext
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -302,6 +303,10 @@ class DeployTest(unittest.TestCase):
         self.assertEqual(len(runner.commands), 5)
         self.assertEqual(runner.commands[3][0:3], ("aws", "ecs", "describe-services"))
         self.assertEqual(runner.commands[4][0:3], ("aws", "ssm", "put-parameter"))
+        self.assertEqual(
+            runner.commands[4][runner.commands[4].index("--value") + 1],
+            "example.ecr/app:abc123",
+        )
         self.assertEqual(result.unchanged_resources, ("ecs:cluster/service",))
 
     def test_ecs_digest_image_is_a_no_op(self) -> None:
@@ -342,9 +347,116 @@ class DeployTest(unittest.TestCase):
         result = deploy_ecs(config, context, runner=runner)
 
         self.assertEqual(result.unchanged_resources, ("ecs:cluster/service",))
+        self.assertEqual(
+            runner.commands[-1][runner.commands[-1].index("--value") + 1],
+            f"{repository}@sha256:abc",
+        )
         self.assertNotIn(
             "update-service", " ".join(" ".join(command) for command in runner.commands)
         )
+
+    def test_existing_sha_reference_is_preserved_when_digest_is_known(self) -> None:
+        config = self.config_from_text(
+            MULTI_SERVICE_CONFIG.replace("[web, worker]", "[web]")
+        )
+        repository = "123456789012.dkr.ecr.ca-central-1.amazonaws.com/partner"
+        image_reference = f"{repository}:abc123"
+        context = self.context(
+            Path("."),
+            {
+                "RELEASE_ECR_REPOSITORY": repository,
+                "RELEASE_ECS_WEB_CLUSTER": "cluster",
+                "RELEASE_ECS_WEB_SERVICE": "service",
+                "RELEASE_ECS_WEB_CONTAINER": "app",
+            },
+        )
+        for force_redeploy in (False, True):
+            with self.subTest(force_redeploy=force_redeploy):
+                responses = [
+                    (0, json.dumps({"imageDetails": [{"imageDigest": "sha256:new"}]})),
+                    (
+                        0,
+                        json.dumps(
+                            {
+                                "services": [
+                                    {
+                                        "taskDefinition": "task:1",
+                                        "deployments": [
+                                            {"id": "old", "status": "PRIMARY"}
+                                        ],
+                                    }
+                                ]
+                            }
+                        ),
+                    ),
+                    (
+                        0,
+                        json.dumps(
+                            {
+                                "taskDefinition": {
+                                    "containerDefinitions": [
+                                        {"name": "app", "image": image_reference}
+                                    ]
+                                }
+                            }
+                        ),
+                    ),
+                ]
+                if force_redeploy:
+                    responses.append((0, "{}"))
+                responses.append((0, self.stable_service("task:1", "new")))
+                runner = AwsRunner(responses)
+
+                deploy_ecs(
+                    config, context, force_redeploy=force_redeploy, runner=runner
+                )
+
+                self.assertEqual(
+                    runner.commands[-1][runner.commands[-1].index("--value") + 1],
+                    image_reference,
+                )
+                self.assertFalse(
+                    any(
+                        "register-task-definition" in command
+                        for command in runner.commands
+                    )
+                )
+                self.assertEqual(
+                    sum("update-service" in command for command in runner.commands),
+                    int(force_redeploy),
+                )
+
+    def test_denied_task_definition_tag_read_aborts_before_mutation(self) -> None:
+        config = self.config("canadalogin-user-selfservice-webapp")
+        context = self.context(
+            Path("."),
+            {
+                "RELEASE_ECR_REPOSITORY": "example.ecr/app",
+                "RELEASE_ECS_CLUSTER": "cluster",
+                "RELEASE_ECS_SERVICE": "service",
+                "RELEASE_ECS_CONTAINER": "service",
+            },
+        )
+        responses = [
+            subprocess.CompletedProcess([], 0, '{"imageDetails": [{}]}', ""),
+            subprocess.CompletedProcess(
+                [], 0, '{"services": [{"taskDefinition": "task:1"}]}', ""
+            ),
+            subprocess.CompletedProcess(
+                [], 254, "", "AccessDeniedException: ecs:ListTagsForResource"
+            ),
+        ]
+        with (
+            patch(
+                "canadalogin_release.support.commands.subprocess.run",
+                side_effect=responses,
+            ) as run,
+            self.assertRaisesRegex(CommandError, "ecs:ListTagsForResource"),
+        ):
+            deploy_ecs(config, context)
+
+        self.assertEqual(run.call_count, 3)
+        self.assertIn("TAGS", run.call_args.args[0])
 
     def verify_attestation(self, images: list[object], gh_code: int = 0) -> AwsRunner:
         config = self.config_from_text(
@@ -492,7 +604,12 @@ class DeployTest(unittest.TestCase):
                         {"name": "service", "image": f"{repository}:old"},
                         {"name": "sidecar", "image": "example.ecr/sidecar:fixed"},
                     ],
-                }
+                },
+                "tags": [
+                    {"key": "Terraform", "value": "true"},
+                    {"key": "billing_code", "value": "partner-portal"},
+                    {"key": "aws:reserved", "value": "not-user-managed"},
+                ],
             }
         )
         registered = json.dumps({"taskDefinition": {"taskDefinitionArn": "task:2"}})
@@ -539,7 +656,19 @@ class DeployTest(unittest.TestCase):
         containers = runner.registration["containerDefinitions"]
         self.assertEqual(containers[0]["image"], f"{repository}@sha256:abc")
         self.assertEqual(containers[1]["image"], "example.ecr/sidecar:fixed")
-        self.assertNotIn("tags", runner.registration)
+        self.assertEqual(
+            runner.registration["tags"],
+            [
+                {"key": "Terraform", "value": "true"},
+                {"key": "billing_code", "value": "partner-portal"},
+            ],
+        )
+        self.assertEqual(
+            runner.commands[2][runner.commands[2].index("--task-definition") + 1],
+            "task:1",
+        )
+        self.assertIn("--include", runner.commands[2])
+        self.assertIn("TAGS", runner.commands[2])
         self.assertIn("task:2", runner.commands[4])
         self.assertIn("--propagate-tags", runner.commands[4])
         self.assertIn("SERVICE", runner.commands[4])
@@ -548,6 +677,10 @@ class DeployTest(unittest.TestCase):
             runner.commands[6][0:3], ("aws", "ecs", "describe-task-definition")
         )
         self.assertEqual(runner.commands[7][0:3], ("aws", "ssm", "put-parameter"))
+        self.assertEqual(
+            runner.commands[7][runner.commands[7].index("--value") + 1],
+            containers[0]["image"],
+        )
         self.assertEqual(result.changed_resources, ("ecs:cluster/service",))
         self.assertTrue(runner.log_outputs)
         self.assertTrue(all(not log_output for log_output in runner.log_outputs))
@@ -666,6 +799,11 @@ class DeployTest(unittest.TestCase):
                 "/ecs/cluster-worker/service-worker/container-image",
             ],
         )
+        self.assertEqual(
+            [command[command.index("--value") + 1] for command in ssm_commands],
+            [f"{repository}@sha256:new", f"{repository}@sha256:new"],
+        )
+        self.assertEqual(runner.registration["tags"], [])
 
     def test_ecs_wait_failure_includes_rollout_diagnostics(self) -> None:
         config = self.config("canadalogin-user-selfservice-webapp")

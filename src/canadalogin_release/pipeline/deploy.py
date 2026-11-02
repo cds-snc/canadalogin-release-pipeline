@@ -43,6 +43,7 @@ REGISTER_TASK_DEFINITION_FIELDS = {
     "proxyConfiguration",
     "requiresCompatibilities",
     "runtimePlatform",
+    "tags",
     "taskRoleArn",
     "volumes",
 }
@@ -222,7 +223,7 @@ def deploy_ecs(
                 runner,
                 expected_task_definition_arn=state.task_definition_arn,
             )
-            _update_ssm(state, runner)
+            _update_ssm(state, runner, image=state.current_image)
             log(f"{resource}: no deployment needed.")
             unchanged.append(resource)
             continue
@@ -264,7 +265,11 @@ def deploy_ecs(
         )
         if not image_matches_desired:
             _verify_task_definition_image(state, task_definition_arn, runner)
-        _update_ssm(state, runner)
+        _update_ssm(
+            state,
+            runner,
+            image=state.current_image if image_matches_desired else deployment_image,
+        )
         log(f"{resource}: deployment complete.")
         changed.append(resource)
     return DeploymentResult(context.sha, tuple(changed), tuple(unchanged))
@@ -605,6 +610,8 @@ def _prepare_migrations(
                 "describe-task-definition",
                 "--task-definition",
                 reference,
+                "--include",
+                "TAGS",
                 "--output",
                 "json",
             ],
@@ -648,7 +655,9 @@ def _prepare_migrations(
         migrations.append(
             _MigrationState(
                 replace(
-                    state, task_definition=definition, container=MIGRATION_CONTAINER
+                    state,
+                    task_definition={**definition, "tags": document.get("tags", [])},
+                    container=MIGRATION_CONTAINER,
                 ),
                 network,
             )
@@ -973,6 +982,8 @@ def _prepare_ecs(
                     "describe-task-definition",
                     "--task-definition",
                     task_definition_arn,
+                    "--include",
+                    "TAGS",
                     "--output",
                     "json",
                 ],
@@ -1017,7 +1028,10 @@ def _prepare_ecs(
                     current_image=containers[0]["image"],
                     task_definition_arn=task_definition_arn,
                     primary_deployment_id=primary_deployment_id,
-                    task_definition=task_definition,
+                    task_definition={
+                        **task_definition,
+                        "tags": task_document.get("tags", []),
+                    },
                     ssm_parameter=ssm_parameter,
                     network_configuration=service_document_value.get(
                         "networkConfiguration"
@@ -1145,6 +1159,11 @@ def _register_task_definition(
         for key, value in task_definition.items()
         if key in REGISTER_TASK_DEFINITION_FIELDS
     }
+    registration["tags"] = [
+        tag
+        for tag in registration.get("tags", [])
+        if not tag["key"].startswith("aws:")
+    ]
     temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -1222,7 +1241,7 @@ def _image_matches_desired(state: _EcsState) -> bool:
     }
 
 
-def _update_ssm(state: _EcsState, runner: CommandRunner) -> None:
+def _update_ssm(state: _EcsState, runner: CommandRunner, *, image: str) -> None:
     if not state.ssm_parameter:
         return
     resource = f"ecs:{state.cluster}/{state.service}"
@@ -1236,7 +1255,7 @@ def _update_ssm(state: _EcsState, runner: CommandRunner) -> None:
             "--name",
             state.ssm_parameter,
             "--value",
-            state.desired_image,
+            image,
             "--type",
             "String",
             "--overwrite",
